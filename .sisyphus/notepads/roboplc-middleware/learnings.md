@@ -76,3 +76,10 @@
 - Implement transport explicitly with `std::net::TcpListener` and forward raw request bytes into `server.handle_request_payload::<Json>(&payload, source)`.
 - For worker shutdown compatibility, bind listener in non-blocking mode and poll `context.is_online()` between `accept()` attempts (short sleep on `WouldBlock`).
 - Per-connection read timeout (`set_read_timeout`) avoids indefinite blocking while still allowing multi-chunk payload accumulation before dispatch.
+
+### Hub Message Integration Scaffolding (Task 35)
+- RpcHandler cannot directly send Hub messages because it doesn't have access to `context.hub()` (trait design constraint).
+- Minimal approach: Add TODO comments documenting the architecture and stubs with logging.
+- Device Manager receives `DeviceControl` and `DeviceResponse` via Hub registration.
+- Full integration requires channel-based architecture between RpcWorker and RpcHandler, or trait modification to pass Hub context.
+- Message routing architecture: RPC worker → Hub → Device Manager → Modbus workers → Hub → RPC worker.

@@ -70,6 +70,23 @@ enum RpcResultType {
     },
 }
 
+// RpcHandler handles RPC requests from clients.
+//
+// TODO: Hub integration requirement
+// Currently, RpcHandler cannot send DeviceControl messages via Hub because it doesn't have
+// access to context.hub(). To enable full Hub integration:
+//
+// Option A: Channel-based architecture
+// - Create channels between RpcWorker and RpcHandler
+// - RpcWorker owns the Hub client and sends/receives messages
+// - RpcHandler sends requests via channel, receives responses via channel
+// - RpcWorker processes incoming DeviceResponse and correlates with pending requests
+//
+// Option B: Store Hub client reference (not possible with current trait)
+// - Would require modifying RpcServerHandler trait to accept context
+//
+// For now, stub implementations return hardcoded responses.
+// Full implementation will require architectural changes to pass Hub context to handler.
 struct RpcHandler {
     device_ids: Vec<String>,
 }
