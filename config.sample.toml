@@ -1,0 +1,27 @@
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[[devices]]
+id = "plc1"
+type = "plc"
+address = "192.168.1.10"
+port = 502
+unit_id = 1
+addressing_mode = "zero_based"
+byte_order = "big_endian"
+tcp_nodelay = true
+max_concurrent_ops = 3
+heartbeat_interval_sec = 30
+
+[[devices.register_mappings]]
+signal_name = "motor_speed"
+address = "h100"
+data_type = "u16"
+access = "rw"
+description = "Motor speed setpoint"

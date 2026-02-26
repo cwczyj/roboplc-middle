@@ -1018,6 +1018,7 @@ dependencies = [
  "parking_lot_rt",
  "roboplc",
  "roboplc-rpc",
+ "rtsc 0.4.4",
  "serde",
  "serde_json",
  "tempfile",
