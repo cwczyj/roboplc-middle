@@ -19,3 +19,15 @@
 ### Pattern References
 - RoboPLC modbus-master example: `/home/lipschitz/.cargo/registry/src/.../roboplc-0.6.4/examples/modbus-master.rs`
 - Context7 docs: `/roboplc/roboplc` for Hub, Controller, Worker patterns
+
+### Device Profile Patterns (Task 13)
+- Prefer `crate::config::{AddressingMode, ByteOrder, DataType}` for internal modules instead of crate-name imports.
+- `AddressMapping::parse` can normalize prefixed Modbus notation (`c`, `d`, `i`, `h`) into typed register space + `u16` offset.
+- Keep byte-order handling isolated in a utility (`convert_byte_order`) so converters can stay data-type focused.
+- `DataType` is not `Copy`; helper functions that inspect it should accept `&DataType` to avoid move errors.
+
+## 2026-02-26 Task 12 Modbus Worker Scaffolding
+
+- `WorkerOpts` derive must be attached to the worker struct, not the `impl Worker` block.
+- A valid Modbus TCP skeleton for RoboPLC can be established with `tcp::connect(endpoint, timeout)?` and a `ModbusMapping` placeholder to anchor `io::modbus::prelude::*` usage.
+- Heartbeat loop pattern: `for _ in interval(Duration::from_millis(100)).take_while(|_| context.is_online())` then `context.hub().send(Message::DeviceHeartbeat { ... })`.
