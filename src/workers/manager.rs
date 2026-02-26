@@ -3,11 +3,11 @@ use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use roboplc::prelude::*;
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc,
 };
+use std::time;
 
 /// Correlation ID for request/response matching
 static CORRELATION_ID: AtomicU64 = AtomicU64::new(0);
@@ -55,6 +55,40 @@ impl DeviceManager {
         self.pending_requests
             .retain(|_, req| now_ms.saturating_sub(req.timestamp_ms) < self.request_timeout_ms);
     }
+    fn register_devices(&self, context: &Context<Message, Variables>) {
+        let mut states = context.variables().device_states.write();
+        for device in &self.config.devices {
+            states.insert(
+                device.id.clone(),
+                crate::DeviceStatus {
+                    connected: false,
+                    last_communication: time::Instant::now(),
+                    error_count: 0,
+                    reconnect_count: 0,
+                },
+            );
+            tracing::info!("Registered device: {}", device.id);
+        }
+    }
+
+    fn update_device_status(&self, context: &Context<Message, Variables>, device_id: &str, connected: bool) {
+        let mut states = context.variables().device_states.write();
+        if let Some(status) = states.get_mut(device_id) {
+            status.connected = connected;
+            if connected {
+                status.last_communication = time::Instant::now();
+                status.error_count = 0;
+            }
+        }
+    }
+
+    fn record_error(&self, context: &Context<Message, Variables>, device_id: &str) {
+        let mut states = context.variables().device_states.write();
+        if let Some(status) = states.get_mut(device_id) {
+            status.error_count += 1;
+        }
+    }
+
 }
 
 impl Worker<Message, Variables> for DeviceManager {
@@ -68,6 +102,10 @@ impl Worker<Message, Variables> for DeviceManager {
             "Device Manager started, routing {} devices",
             self.config.devices.len()
         );
+
+        // Register devices on startup
+        self.register_devices(context);
+
 
         for msg in client {
             let now_ms = std::time::SystemTime::now()
