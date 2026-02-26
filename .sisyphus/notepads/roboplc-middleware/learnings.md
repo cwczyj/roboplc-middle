@@ -45,3 +45,10 @@
 - Keep config loader state as `current_config` and compare old/new via `serde_json::Value` to detect changed paths.
 - Use recursive object-key diff collection (dot notation like `server.rpc_port`) and treat array inequality as a path-level change.
 - Emit `Message::ConfigUpdate { config: <serialized-new-config> }` only when diff is non-empty; log changed fields with tracing.
+
+### Modbus TCP Client Setup Pattern (Task 22)
+- `roboplc::comm::tcp::connect` returns a lazy `roboplc::comm::Client`; call `client.connect()?` to force immediate connectivity validation.
+- Keep per-device worker state as `Option<ModbusClient>` plus `last_heartbeat` timestamp to gate reconnection and heartbeat emission.
+- Encapsulate reconnection in client wrapper: `reconnect()` should drop stale connection state, call `client.reconnect()` when present, then establish a fresh connection.
+- In worker loop, retry connection with bounded sleep (`RECONNECT_DELAY`) before continuing periodic work.
+- Add unit tests for constructor invariants (client starts disconnected; worker starts with no client) to guard state scaffolding before register I/O is implemented.
