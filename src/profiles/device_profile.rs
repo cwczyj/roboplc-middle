@@ -1,4 +1,5 @@
 use crate::config::{AddressingMode, ByteOrder, DataType};
+use binrw::{BinRead, BinWrite};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +49,38 @@ impl AddressMapping {
     }
 }
 
+// Build a DeviceProfile from a device config
+impl DeviceProfile {
+    pub fn from_device(device: &crate::config::Device) -> Self {
+        Self {
+            device_id: device.id.clone(),
+            addressing_mode: device.addressing_mode.clone(),
+            byte_order: device.byte_order.clone(),
+            register_mappings: device
+                .register_mappings
+                .iter()
+                .map(|m| RegisterProfile {
+                    signal_name: m.signal_name.clone(),
+                    address: parse_address_number(&m.address).unwrap_or(0),
+                    register_type: parse_register_type(&m.address)
+                        .unwrap_or(RegisterType::HoldingRegister),
+                    data_type: m.data_type.clone(),
+                    scale_factor: None,
+                    offset: None,
+                })
+                .collect(),
+        }
+    }
+}
+
+fn parse_address_number(addr: &str) -> Option<u16> {
+    AddressMapping::parse(addr).map(|m| m.address)
+}
+
+fn parse_register_type(addr: &str) -> Option<RegisterType> {
+    AddressMapping::parse(addr).map(|m| m.register_type)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterProfile {
     pub signal_name: String,
@@ -62,6 +95,32 @@ impl RegisterProfile {
     pub fn parse_address(addr: &str) -> Option<(RegisterType, u16)> {
         let parsed = AddressMapping::parse(addr)?;
         Some((parsed.register_type, parsed.address))
+    }
+}
+
+#[derive(BinRead, BinWrite, Clone, Debug)]
+pub enum RegisterValue {
+    U16(u16),
+    I16(i16),
+}
+
+#[derive(BinRead, BinWrite, Clone, Debug)]
+pub struct RegisterPair {
+    pub high: u16,
+    pub low: u16,
+}
+
+impl RegisterPair {
+    pub fn to_u32(&self) -> u32 {
+        ((self.high as u32) << 16) | (self.low as u32)
+    }
+    
+    pub fn to_i32(&self) -> i32 {
+        self.to_u32() as i32
+    }
+    
+    pub fn to_f32(&self) -> f32 {
+        f32::from_bits(self.to_u32())
     }
 }
 
@@ -138,6 +197,11 @@ pub fn convert_byte_order(data: &[u8], byte_order: ByteOrder) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{
+        AccessMode, AddressingMode as ConfigAddressingMode, ByteOrder as ConfigByteOrder,
+        DataType as ConfigDataType, Device as ConfigDevice, DeviceType as ConfigDeviceType,
+        RegisterMapping,
+    };
 
     #[test]
     fn parse_address_mapping() {
@@ -193,4 +257,67 @@ mod tests {
             vec![0x33, 0x44, 0x11, 0x22]
         );
     }
+
+    #[test]
+    fn test_from_device_basic() {
+        // Build a minimal RegisterMapping and Device config
+        let reg = crate::config::RegisterMapping {
+            signal_name: "sig".to_string(),
+            address: "h10".to_string(),
+            data_type: ConfigDataType::U16,
+            access: AccessMode::Rw,
+            description: String::new(),
+        };
+
+        let device = crate::config::Device {
+            id: "dev1".to_string(),
+            device_type: ConfigDeviceType::Plc,
+            address: "127.0.0.1".to_string(),
+            port: 0,
+            unit_id: 0,
+            addressing_mode: ConfigAddressingMode::ZeroBased,
+            byte_order: ConfigByteOrder::BigEndian,
+            tcp_nodelay: true,
+            max_concurrent_ops: 3,
+            heartbeat_interval_sec: 30,
+            register_mappings: vec![reg],
+        };
+
+        let profile = DeviceProfile::from_device(&device);
+        assert_eq!(profile.device_id, "dev1");
+        assert_eq!(profile.register_mappings.len(), 1);
+        let rp = &profile.register_mappings[0];
+        assert_eq!(rp.signal_name, "sig");
+        assert_eq!(rp.address, 10);
+        assert_eq!(rp.register_type, RegisterType::HoldingRegister);
+        assert_eq!(rp.data_type, ConfigDataType::U16);
+        assert!(rp.scale_factor.is_none());
+        assert!(rp.offset.is_none());
+    }
+    #[test]
+    fn test_register_pair_u32() {
+        let pair = RegisterPair { high: 0x1234, low: 0x5678 };
+        assert_eq!(pair.to_u32(), 0x12345678);
+    }
+    
+    #[test]
+    fn test_register_pair_f32() {
+        let pair = RegisterPair { high: 0x4049, low: 0x0FDB };
+        assert!((pair.to_f32() - 3.14159).abs() < 0.001);
+    }
+    
+    #[test]
+    fn test_register_pair_i32() {
+        let pair = RegisterPair { high: 0xFFFF, low: 0xFFFF };
+        assert_eq!(pair.to_i32(), -1);
+    }
+    
+    #[test]
+    fn test_register_pair_zero() {
+        let pair = RegisterPair { high: 0, low: 0 };
+        assert_eq!(pair.to_u32(), 0);
+        assert_eq!(pair.to_i32(), 0);
+        assert_eq!(pair.to_f32(), 0.0);
+    }
+
 }

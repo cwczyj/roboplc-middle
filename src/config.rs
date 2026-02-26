@@ -57,7 +57,7 @@ fn default_heartbeat_interval() -> u32 {
     30
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceType {
     #[default]
@@ -65,7 +65,7 @@ pub enum DeviceType {
     RobotArm,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AddressingMode {
     #[default]
@@ -73,7 +73,7 @@ pub enum AddressingMode {
     OneBased,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ByteOrder {
     #[default]
@@ -95,7 +95,7 @@ pub struct RegisterMapping {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DataType {
     #[default]
@@ -126,6 +126,10 @@ pub enum ConfigError {
     DuplicateDeviceId(String),
     #[error("Invalid port: {0}")]
     InvalidPort(u16),
+    #[error("Invalid address format for device '{0}' register '{1}': {2}")]
+    InvalidAddressFormat(String, String, String),
+    #[error("Address out of range for device '{0}' register '{1}': {2}")]
+    AddressOutOfRange(String, String, u32),
 }
 
 impl Config {
@@ -141,6 +145,44 @@ impl Config {
         for device in &self.devices {
             if !seen_ids.insert(&device.id) {
                 return Err(ConfigError::DuplicateDeviceId(device.id.clone()));
+            }
+
+            for mapping in &device.register_mappings {
+                let addr = mapping.address.trim();
+                if addr.len() < 2 {
+                    return Err(ConfigError::InvalidAddressFormat(
+                        device.id.clone(),
+                        mapping.signal_name.clone(),
+                        addr.to_string(),
+                    ));
+                }
+
+                let prefix = &addr[0..1].to_lowercase();
+                let num_str = &addr[1..];
+
+                if !matches!(prefix.as_str(), "h" | "d" | "c" | "i") {
+                    return Err(ConfigError::InvalidAddressFormat(
+                        device.id.clone(),
+                        mapping.signal_name.clone(),
+                        addr.to_string(),
+                    ));
+                }
+
+                if let Ok(num) = num_str.parse::<u32>() {
+                    if num > 65535 {
+                        return Err(ConfigError::AddressOutOfRange(
+                            device.id.clone(),
+                            mapping.signal_name.clone(),
+                            num,
+                        ));
+                    }
+                } else {
+                    return Err(ConfigError::InvalidAddressFormat(
+                        device.id.clone(),
+                        mapping.signal_name.clone(),
+                        addr.to_string(),
+                    ));
+                }
             }
         }
         Ok(())
