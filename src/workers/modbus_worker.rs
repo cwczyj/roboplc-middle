@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MODBUS_TIMEOUT: Duration = Duration::from_secs(1);
-const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+const BACKOFF_BASE_MS: u64 = 100;
+const BACKOFF_MAX_MS: u64 = 30000;
 
 static TRANSACTION_COUNTER: AtomicU16 = AtomicU16::new(0);
 
@@ -37,6 +38,36 @@ pub enum ConnectionState {
     Disconnected,
     Connecting,
     Connected,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Backoff {
+    attempts: u32,
+    next_delay_ms: u64,
+}
+
+impl Backoff {
+    fn new() -> Self {
+        Self {
+            attempts: 0,
+            next_delay_ms: BACKOFF_BASE_MS,
+        }
+    }
+
+    fn next_delay(&mut self) -> Duration {
+        let jitter = (self.next_delay_ms / 10) * (self.attempts as u64 % 3);
+        let delay = self.next_delay_ms + jitter;
+
+        self.attempts += 1;
+        self.next_delay_ms = (self.next_delay_ms * 2).min(BACKOFF_MAX_MS);
+
+        Duration::from_millis(delay)
+    }
+
+    fn reset(&mut self) {
+        self.attempts = 0;
+        self.next_delay_ms = BACKOFF_BASE_MS;
+    }
 }
 
 struct ModbusClient {
@@ -91,6 +122,7 @@ pub struct ModbusWorker {
     last_communication: Option<SystemTime>,
     last_heartbeat: SystemTime,
     pending_transactions: HashMap<u16, TransactionId>,
+    backoff: Backoff,
 }
 
 impl ModbusWorker {
@@ -102,6 +134,7 @@ impl ModbusWorker {
             last_communication: None,
             last_heartbeat: SystemTime::UNIX_EPOCH,
             pending_transactions: HashMap::new(),
+            backoff: Backoff::new(),
         }
     }
 
@@ -211,6 +244,7 @@ impl ModbusWorker {
         }
 
         self.update_connection_state(ConnectionState::Connected, context);
+        self.backoff.reset();
         true
     }
 }
@@ -223,7 +257,7 @@ impl Worker<Message, Variables> for ModbusWorker {
             self.prune_stale_transactions(Duration::from_secs(5));
 
             if !self.ensure_connected(context) {
-                std::thread::sleep(RECONNECT_DELAY);
+                std::thread::sleep(self.backoff.next_delay());
                 continue;
             }
 
@@ -340,5 +374,44 @@ mod tests {
         assert_eq!(sample.latency_us, 250);
         assert_eq!(sample.device_id, 0);
         assert!(sample.timestamp_ms > 0);
+    }
+
+    #[test]
+    fn backoff_new_starts_at_base_delay() {
+        let backoff = Backoff::new();
+
+        assert_eq!(backoff.attempts, 0);
+        assert_eq!(backoff.next_delay_ms, BACKOFF_BASE_MS);
+    }
+
+    #[test]
+    fn backoff_next_delay_is_exponential_and_capped() {
+        let mut backoff = Backoff::new();
+
+        let d1 = backoff.next_delay();
+        let d2 = backoff.next_delay();
+        let d3 = backoff.next_delay();
+
+        assert_eq!(d1, Duration::from_millis(100));
+        assert_eq!(d2, Duration::from_millis(220));
+        assert_eq!(d3, Duration::from_millis(480));
+
+        for _ in 0..20 {
+            backoff.next_delay();
+        }
+
+        assert!(backoff.next_delay_ms <= BACKOFF_MAX_MS);
+    }
+
+    #[test]
+    fn backoff_reset_restores_initial_state() {
+        let mut backoff = Backoff::new();
+        let _ = backoff.next_delay();
+        let _ = backoff.next_delay();
+
+        backoff.reset();
+
+        assert_eq!(backoff.attempts, 0);
+        assert_eq!(backoff.next_delay_ms, BACKOFF_BASE_MS);
     }
 }
