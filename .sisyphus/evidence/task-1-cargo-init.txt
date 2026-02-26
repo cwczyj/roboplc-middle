@@ -1,0 +1,56 @@
+# Task 1 Evidence: Cargo project + RoboPLC dependencies
+
+## Scenario 1: Cargo project initializes successfully
+
+**Tool**: Bash (cargo)
+**Steps**:
+1. Ran `cargo init --name roboplc-middleware`
+2. Verified Cargo.toml exists
+
+**Result**: PASS
+- Cargo.toml created with name = "roboplc-middleware"
+- edition = "2021" (correct)
+
+## Scenario 2: Dependencies are correctly specified
+
+**Tool**: Bash (cargo check)
+**Steps**:
+1. Updated Cargo.toml with all required dependencies
+2. Ran `cargo check`
+
+**Result**: PASS
+```
+Checking roboplc-middleware v0.1.0 (/home/lipschitz/Documents/Code/RustCode)
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.60s
+```
+
+## Dependencies Verified
+
+| Dependency | Version | Features | Status |
+|------------|---------|----------|--------|
+| roboplc | 0.6 | modbus, locking-rt-safe | ✅ |
+| roboplc-rpc | 0.1 | std | ✅ |
+| serde | 1.0 | derive | ✅ |
+| serde_json | 1.0 | - | ✅ |
+| toml | 0.8 | - | ✅ |
+| tracing | 0.1 | - | ✅ |
+| tracing-subscriber | 0.3 | env-filter | ✅ |
+| tracing-appender | 0.2 | - | ✅ |
+| tokio | 1 | rt, net, time, sync, macros, signal | ✅ |
+| notify | 6.1 | - | ✅ |
+| parking_lot_rt | 0.12 | - | ✅ |
+| thiserror | 1.0 | - | ✅ |
+| anyhow | 1.0 | - | ✅ |
+| chrono | 0.4 | serde | ✅ |
+
+## Profile Configuration
+
+- [profile.release]
+  - opt-level = 3 ✅
+  - lto = "thin" ✅
+  - codegen-units = 1 ✅
+  - strip = true ✅
+
+## Conclusion
+
+Task 1 completed successfully. All dependencies resolve and compile.
