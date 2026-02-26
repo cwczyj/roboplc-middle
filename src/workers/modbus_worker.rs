@@ -1,5 +1,5 @@
 use crate::config::Device;
-use crate::{Message, Variables};
+use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
 use roboplc::comm::Client;
 use roboplc::controller::prelude::*;
 use roboplc::io::modbus::prelude::*;
@@ -30,6 +30,13 @@ impl TransactionId {
     pub fn elapsed(&self) -> Duration {
         self.created_at.elapsed().unwrap_or(Duration::ZERO)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionState {
+    Disconnected,
+    Connecting,
+    Connected,
 }
 
 struct ModbusClient {
@@ -80,6 +87,8 @@ impl ModbusClient {
 pub struct ModbusWorker {
     device: Device,
     client: Option<ModbusClient>,
+    connection_state: ConnectionState,
+    last_communication: Option<SystemTime>,
     last_heartbeat: SystemTime,
     pending_transactions: HashMap<u16, TransactionId>,
 }
@@ -89,6 +98,8 @@ impl ModbusWorker {
         Self {
             device,
             client: None,
+            connection_state: ConnectionState::Disconnected,
+            last_communication: None,
             last_heartbeat: SystemTime::UNIX_EPOCH,
             pending_transactions: HashMap::new(),
         }
@@ -114,23 +125,93 @@ impl ModbusWorker {
         Ok(())
     }
 
-    fn ensure_connected(&mut self) -> bool {
+    fn update_connection_state_with<F>(&mut self, new_state: ConnectionState, mut emit: F)
+    where
+        F: FnMut(DeviceEvent),
+    {
+        if self.connection_state != new_state {
+            let event_type = match new_state {
+                ConnectionState::Connected => DeviceEventType::Connected,
+                ConnectionState::Disconnected => DeviceEventType::Disconnected,
+                ConnectionState::Connecting => DeviceEventType::Reconnecting,
+            };
+
+            emit(DeviceEvent {
+                device_id: self.device.id.clone(),
+                event_type,
+                timestamp_ms: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+                details: format!("Connection state: {:?}", new_state),
+            });
+
+            self.connection_state = new_state;
+        }
+    }
+
+    fn update_connection_state(
+        &mut self,
+        new_state: ConnectionState,
+        context: &Context<Message, Variables>,
+    ) {
+        self.update_connection_state_with(new_state, |event| {
+            let _ = context.variables().device_events.force_push(event);
+        });
+    }
+
+    fn record_communication_with<F>(&mut self, latency_us: u64, mut emit: F)
+    where
+        F: FnMut(LatencySample),
+    {
+        let now = SystemTime::now();
+        self.last_communication = Some(now);
+
+        let sample = LatencySample {
+            device_id: 0,
+            latency_us,
+            timestamp_ms: now
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+        };
+        emit(sample);
+    }
+
+    fn record_communication(&mut self, context: &Context<Message, Variables>, latency_us: u64) {
+        self.record_communication_with(latency_us, |sample| {
+            let _ = context.variables().latency_samples.force_push(sample);
+        });
+    }
+
+    fn ensure_connected(&mut self, context: &Context<Message, Variables>) -> bool {
         if self.client.is_none() {
+            self.update_connection_state(ConnectionState::Connecting, context);
             if let Err(e) = self.connect() {
                 tracing::warn!(device_id = %self.device.id, error = %e, "Connection failed");
+                self.update_connection_state(ConnectionState::Disconnected, context);
                 return false;
             }
         }
 
-        if let Some(client) = &mut self.client {
-            if let Err(e) = client.ensure_connected() {
+        let reconnect_failed = if let Some(client) = &mut self.client {
+            client.ensure_connected().is_err()
+        } else {
+            false
+        };
+
+        if reconnect_failed {
+            self.client = None;
+            self.update_connection_state(ConnectionState::Connecting, context);
+            if let Err(e) = self.connect() {
                 tracing::warn!(device_id = %self.device.id, error = %e, "Reconnection failed");
-                self.client = None;
+                self.update_connection_state(ConnectionState::Disconnected, context);
                 return false;
             }
         }
 
-        self.client.is_some()
+        self.update_connection_state(ConnectionState::Connected, context);
+        true
     }
 }
 
@@ -141,7 +222,7 @@ impl Worker<Message, Variables> for ModbusWorker {
         for _ in interval(Duration::from_millis(100)).take_while(|_| context.is_online()) {
             self.prune_stale_transactions(Duration::from_secs(5));
 
-            if !self.ensure_connected() {
+            if !self.ensure_connected(context) {
                 std::thread::sleep(RECONNECT_DELAY);
                 continue;
             }
@@ -162,6 +243,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                     timestamp_ms,
                     latency_us: 0,
                 });
+                self.record_communication(context, 0);
                 self.last_heartbeat = now;
             }
         }
@@ -173,6 +255,7 @@ impl Worker<Message, Variables> for ModbusWorker {
 mod tests {
     use super::*;
     use crate::config::{DeviceType, RegisterMapping};
+    use crate::{DeviceEventType, LatencySample};
 
     #[test]
     fn transaction_id_increments() {
@@ -216,6 +299,46 @@ mod tests {
         let worker = ModbusWorker::new(test_device());
 
         assert!(worker.client.is_none());
+        assert_eq!(worker.connection_state, ConnectionState::Disconnected);
+        assert!(worker.last_communication.is_none());
         assert!(worker.pending_transactions.is_empty());
+    }
+
+    #[test]
+    fn update_connection_state_emits_event_on_transition_only() {
+        let mut worker = ModbusWorker::new(test_device());
+        let mut emitted = Vec::new();
+
+        worker
+            .update_connection_state_with(ConnectionState::Connected, |event| emitted.push(event));
+        worker
+            .update_connection_state_with(ConnectionState::Connected, |event| emitted.push(event));
+        worker
+            .update_connection_state_with(ConnectionState::Connecting, |event| emitted.push(event));
+
+        assert_eq!(emitted.len(), 2);
+        assert!(matches!(emitted[0].event_type, DeviceEventType::Connected));
+        assert!(matches!(
+            emitted[1].event_type,
+            DeviceEventType::Reconnecting
+        ));
+        assert_eq!(worker.connection_state, ConnectionState::Connecting);
+    }
+
+    #[test]
+    fn record_communication_updates_timestamp_and_latency_sample() {
+        let mut worker = ModbusWorker::new(test_device());
+        let before = SystemTime::now();
+        let mut emitted_sample: Option<LatencySample> = None;
+
+        worker.record_communication_with(250, |sample| emitted_sample = Some(sample));
+
+        assert!(worker.last_communication.is_some());
+        assert!(worker.last_communication.unwrap() >= before);
+
+        let sample = emitted_sample.expect("latency sample should be emitted");
+        assert_eq!(sample.latency_us, 250);
+        assert_eq!(sample.device_id, 0);
+        assert!(sample.timestamp_ms > 0);
     }
 }

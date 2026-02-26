@@ -30,3 +30,15 @@
 
 ### Status
 - Blocked by unrelated existing code errors outside Task 12 scope.
+
+## 2026-02-26 Task 24 Verification Notes
+
+### Issue
+- `cargo test` passes, but there are pre-existing warnings in unrelated worker/profile files (unused imports/variables, dead code).
+
+### Impact
+- No functional blocker for Task 24.
+- Verification remains green with warnings-only output.
+
+### Status
+- Informational only; no action required for current task scope.

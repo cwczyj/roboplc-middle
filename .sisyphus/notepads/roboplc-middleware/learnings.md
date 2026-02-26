@@ -52,3 +52,9 @@
 - Encapsulate reconnection in client wrapper: `reconnect()` should drop stale connection state, call `client.reconnect()` when present, then establish a fresh connection.
 - In worker loop, retry connection with bounded sleep (`RECONNECT_DELAY`) before continuing periodic work.
 - Add unit tests for constructor invariants (client starts disconnected; worker starts with no client) to guard state scaffolding before register I/O is implemented.
+
+### Application-layer Heartbeat Pattern (Task 24)
+- Add explicit `ConnectionState` (`Disconnected` / `Connecting` / `Connected`) on worker state and emit `DeviceEvent` only when transitions occur to avoid event spam.
+- Map `Connecting` to `DeviceEventType::Reconnecting` so downstream monitors can treat retry loops distinctly from hard disconnects.
+- Keep event emission testable by routing through closure-based helpers (`update_connection_state_with`, `record_communication_with`), while production wrappers still push into `context.variables()` buffers.
+- Record successful heartbeat as communication (`last_communication = Some(SystemTime::now())`) and push a `LatencySample` in the same path for consistent observability updates.
