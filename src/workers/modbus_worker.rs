@@ -8,7 +8,8 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const MODBUS_TIMEOUT: Duration = Duration::from_secs(1);
+const BASE_TIMEOUT: Duration = Duration::from_secs(1);
+const MAX_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKOFF_BASE_MS: u64 = 100;
 const BACKOFF_MAX_MS: u64 = 30000;
 
@@ -67,6 +68,39 @@ impl Backoff {
     fn reset(&mut self) {
         self.attempts = 0;
         self.next_delay_ms = BACKOFF_BASE_MS;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TimeoutHandler {
+    current: Duration,
+    base: Duration,
+    max: Duration,
+}
+
+impl TimeoutHandler {
+    fn new() -> Self {
+        Self {
+            current: BASE_TIMEOUT,
+            base: BASE_TIMEOUT,
+            max: MAX_TIMEOUT,
+        }
+    }
+
+    fn timeout(&self) -> Duration {
+        self.current
+    }
+
+    fn on_timeout(&mut self) {
+        self.current = (self.current * 2).min(self.max);
+    }
+
+    fn on_success(&mut self) {
+        self.current = self.base;
+    }
+
+    fn is_at_max(&self) -> bool {
+        self.current >= self.max
     }
 }
 
@@ -140,30 +174,30 @@ impl ModbusClient {
         }
     }
 
-    fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let client = tcp::connect(&self.endpoint, MODBUS_TIMEOUT)?;
+    fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
+        let client = tcp::connect(&self.endpoint, timeout)?;
         client.connect()?;
         self.connection = Some(client);
         Ok(())
     }
 
-    fn reconnect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn reconnect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(client) = &self.connection {
             client.reconnect();
         }
         self.connection = None;
-        self.connect()
+        self.connect(timeout)
     }
 
-    fn ensure_connected(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn ensure_connected(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         match &self.connection {
             Some(client) => {
                 if client.connect().is_err() {
-                    self.reconnect()?;
+                    self.reconnect(timeout)?;
                 }
             }
             None => {
-                self.connect()?;
+                self.connect(timeout)?;
             }
         }
         Ok(())
@@ -182,6 +216,7 @@ pub struct ModbusWorker {
     #[allow(dead_code)]
     operation_queue: OperationQueue<ModbusOp>,
     backoff: Backoff,
+    timeout_handler: TimeoutHandler,
 }
 
 impl ModbusWorker {
@@ -197,6 +232,7 @@ impl ModbusWorker {
             pending_transactions: HashMap::new(),
             operation_queue: OperationQueue::new(max_in_flight),
             backoff: Backoff::new(),
+            timeout_handler: TimeoutHandler::new(),
         }
     }
 
@@ -211,10 +247,10 @@ impl ModbusWorker {
             .retain(|_, tx| tx.elapsed() <= max_age);
     }
 
-    fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = format!("{}:{}", self.device.address, self.device.port);
         let mut client = ModbusClient::new(endpoint);
-        client.connect()?;
+        client.connect(timeout)?;
         self.client = Some(client);
         tracing::info!(device_id = %self.device.id, "Connected to Modbus device");
         Ok(())
@@ -280,17 +316,27 @@ impl ModbusWorker {
     }
 
     fn ensure_connected(&mut self, context: &Context<Message, Variables>) -> bool {
+        let timeout = self.timeout_handler.timeout();
+
         if self.client.is_none() {
             self.update_connection_state(ConnectionState::Connecting, context);
-            if let Err(e) = self.connect() {
+            if let Err(e) = self.connect(timeout) {
                 tracing::warn!(device_id = %self.device.id, error = %e, "Connection failed");
+                self.timeout_handler.on_timeout();
+                if self.timeout_handler.is_at_max() {
+                    tracing::warn!(
+                        device_id = %self.device.id,
+                        timeout_s = self.timeout_handler.timeout().as_secs(),
+                        "Adaptive Modbus timeout reached max"
+                    );
+                }
                 self.update_connection_state(ConnectionState::Disconnected, context);
                 return false;
             }
         }
 
         let reconnect_failed = if let Some(client) = &mut self.client {
-            client.ensure_connected().is_err()
+            client.ensure_connected(timeout).is_err()
         } else {
             false
         };
@@ -298,14 +344,23 @@ impl ModbusWorker {
         if reconnect_failed {
             self.client = None;
             self.update_connection_state(ConnectionState::Connecting, context);
-            if let Err(e) = self.connect() {
+            if let Err(e) = self.connect(timeout) {
                 tracing::warn!(device_id = %self.device.id, error = %e, "Reconnection failed");
+                self.timeout_handler.on_timeout();
+                if self.timeout_handler.is_at_max() {
+                    tracing::warn!(
+                        device_id = %self.device.id,
+                        timeout_s = self.timeout_handler.timeout().as_secs(),
+                        "Adaptive Modbus timeout reached max"
+                    );
+                }
                 self.update_connection_state(ConnectionState::Disconnected, context);
                 return false;
             }
         }
 
         self.update_connection_state(ConnectionState::Connected, context);
+        self.timeout_handler.on_success();
         self.backoff.reset();
         true
     }
@@ -554,5 +609,33 @@ mod tests {
         queue.complete();
         queue.complete();
         assert_eq!(queue.in_flight_count(), 0);
+    }
+
+    #[test]
+    fn timeout_handler_doubles_on_timeout_until_max() {
+        let mut handler = TimeoutHandler::new();
+
+        assert_eq!(handler.timeout(), BASE_TIMEOUT);
+
+        for _ in 0..10 {
+            handler.on_timeout();
+        }
+
+        assert_eq!(handler.timeout(), MAX_TIMEOUT);
+        assert!(handler.is_at_max());
+    }
+
+    #[test]
+    fn timeout_handler_resets_to_base_after_success() {
+        let mut handler = TimeoutHandler::new();
+
+        handler.on_timeout();
+        handler.on_timeout();
+        assert!(handler.timeout() > BASE_TIMEOUT);
+
+        handler.on_success();
+
+        assert_eq!(handler.timeout(), BASE_TIMEOUT);
+        assert!(!handler.is_at_max());
     }
 }
