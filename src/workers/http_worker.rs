@@ -119,3 +119,101 @@ fn handle_request(req: &str, device_states: &Arc<parking_lot_rt::RwLock<std::col
         ("404 Not Found", serde_json::json!({"error": "Not found"}).to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DeviceStatus;
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    fn make_device_states() -> Arc<parking_lot_rt::RwLock<HashMap<String, DeviceStatus>>> {
+        Arc::new(parking_lot_rt::RwLock::new(HashMap::new()))
+    }
+
+    fn make_device_states_with_device(id: &str, connected: bool) -> Arc<parking_lot_rt::RwLock<HashMap<String, DeviceStatus>>> {
+        let mut states = HashMap::new();
+        states.insert(id.to_string(), DeviceStatus {
+            connected,
+            last_communication: Instant::now(),
+            error_count: 0,
+            reconnect_count: 0,
+        });
+        Arc::new(parking_lot_rt::RwLock::new(states))
+    }
+
+    #[test]
+    fn test_get_devices_empty() {
+        let states = make_device_states();
+        let req = "GET /api/devices HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "200 OK");
+        assert!(body.contains("\"devices\":[]"));
+    }
+
+    #[test]
+    fn test_get_devices_with_device() {
+        let states = make_device_states_with_device("device-1", true);
+        let req = "GET /api/devices HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "200 OK");
+        assert!(body.contains("\"device-1\""));
+        assert!(body.contains("\"connected\":true"));
+    }
+
+    #[test]
+    fn test_get_device_by_id_found() {
+        let states = make_device_states_with_device("device-1", true);
+        let req = "GET /api/devices/device-1 HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "200 OK");
+        assert!(body.contains("\"device-1\""));
+        assert!(body.contains("\"connected\":true"));
+        assert!(body.contains("\"error_count\":0"));
+    }
+
+    #[test]
+    fn test_get_device_by_id_not_found() {
+        let states = make_device_states();
+        let req = "GET /api/devices/nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "404 Not Found");
+        assert!(body.contains("Device not found"));
+    }
+
+    #[test]
+    fn test_get_health() {
+        let states = make_device_states();
+        let req = "GET /api/health HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "200 OK");
+        assert!(body.contains("\"status\":\"healthy\""));
+    }
+
+    #[test]
+    fn test_get_config() {
+        let states = make_device_states();
+        let req = "GET /api/config HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "200 OK");
+        assert!(body.contains("\"config\""));
+    }
+
+    #[test]
+    fn test_post_config_reload() {
+        let states = make_device_states();
+        let req = "POST /api/config/reload HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "200 OK");
+        assert!(body.contains("\"reload\":\"ok\""));
+    }
+
+    #[test]
+    fn test_unknown_path() {
+        let states = make_device_states();
+        let req = "GET /unknown HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (status, body) = handle_request(req, &states);
+        assert_eq!(status, "404 Not Found");
+        assert!(body.contains("Not found"));
+    }
+}
