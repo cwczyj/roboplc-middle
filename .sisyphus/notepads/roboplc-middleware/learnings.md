@@ -40,3 +40,8 @@
 - Implemented Task 20: Added address validation in config.rs (format and range checks) with new ConfigError variants.
 - Validation checks cover: address format (prefix h/d/c/i + number) and range 0-65535 for each register mapping.
 - Added tests scaffolding plan (unit tests for invalid addresses) and ensured cargo test can be run (note: full test suite may require project dependencies).
+
+### Config Loader Reload Pattern (Task 21)
+- Keep config loader state as `current_config` and compare old/new via `serde_json::Value` to detect changed paths.
+- Use recursive object-key diff collection (dot notation like `server.rpc_port`) and treat array inequality as a path-level change.
+- Emit `Message::ConfigUpdate { config: <serialized-new-config> }` only when diff is non-empty; log changed fields with tracing.
