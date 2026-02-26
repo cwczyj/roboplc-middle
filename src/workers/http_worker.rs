@@ -1,7 +1,7 @@
 use roboplc::controller::prelude::*;
-use roboplc::prelude::*;
 use crate::{Variables, config::Config, Message};
 use std::thread;
+use std::sync::Arc;
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "http_server", blocking = true)]
@@ -19,6 +19,7 @@ impl Worker<Message, Variables> for HttpWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         let http_port = self.config.server.http_port;
         let addr = format!("0.0.0.0:{}", http_port);
+        let device_states = context.variables().device_states.clone();
         
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
@@ -47,6 +48,7 @@ impl Worker<Message, Variables> for HttpWorker {
                         }
                     };
                     
+                    let states = device_states.clone();
                     tokio::spawn(async move {
                         let mut buf = [0u8; 4096];
                         let n = match socket.read(&mut buf).await {
@@ -54,19 +56,9 @@ impl Worker<Message, Variables> for HttpWorker {
                             _ => return,
                         };
                         let req = String::from_utf8_lossy(&buf[..n]);
-                        let (status, body) = if req.starts_with("GET /api/devices/") {
-                            ("200 OK", "{\"devices\":[{\"id\":1}]}")
-                        } else if req.starts_with("GET /api/devices") {
-                            ("200 OK", "{\"devices\":[]}")
-                        } else if req.starts_with("GET /api/health") {
-                            ("200 OK", "{\"status\":\"healthy\"}")
-                        } else if req.starts_with("GET /api/config") {
-                            ("200 OK", "{\"config\":{}}")
-                        } else if req.starts_with("POST /api/config/reload") {
-                            ("200 OK", "{\"reload\":\"ok\"}")
-                        } else {
-                            ("404 Not Found", "Not Found")
-                        };
+                        
+                        let (status, body) = handle_request(&req, &states);
+                        
                         let response = format!(
                             "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                             status, body.len(), body
@@ -81,5 +73,49 @@ impl Worker<Message, Variables> for HttpWorker {
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
         Ok(())
+    }
+}
+
+fn handle_request(req: &str, device_states: &Arc<parking_lot_rt::RwLock<std::collections::HashMap<String, crate::DeviceStatus>>>) -> (&'static str, String) {
+    if req.starts_with("GET /api/devices/") {
+        let path = req.lines().next().unwrap_or("");
+        let device_id = path
+            .trim_start_matches("GET /api/devices/")
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
+        
+        let states = device_states.read();
+        if let Some(status) = states.get(device_id) {
+            let body = serde_json::json!({
+                "id": device_id,
+                "connected": status.connected,
+                "last_communication_ms": status.last_communication.elapsed().as_millis() as u64,
+                "error_count": status.error_count,
+                "reconnect_count": status.reconnect_count,
+            });
+            ("200 OK", body.to_string())
+        } else {
+            ("404 Not Found", serde_json::json!({"error": "Device not found"}).to_string())
+        }
+    } else if req.starts_with("GET /api/devices") {
+        let states = device_states.read();
+        let devices: Vec<serde_json::Value> = states.iter().map(|(id, status)| {
+            serde_json::json!({
+                "id": id,
+                "connected": status.connected,
+                "last_communication_ms": status.last_communication.elapsed().as_millis() as u64,
+                "error_count": status.error_count,
+            })
+        }).collect();
+        ("200 OK", serde_json::json!({"devices": devices}).to_string())
+    } else if req.starts_with("GET /api/health") {
+        ("200 OK", serde_json::json!({"status": "healthy"}).to_string())
+    } else if req.starts_with("GET /api/config") {
+        ("200 OK", serde_json::json!({"config": {}}).to_string())
+    } else if req.starts_with("POST /api/config/reload") {
+        ("200 OK", serde_json::json!({"reload": "ok"}).to_string())
+    } else {
+        ("404 Not Found", serde_json::json!({"error": "Not found"}).to_string())
     }
 }
