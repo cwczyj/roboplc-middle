@@ -1,0 +1,79 @@
+# Example Configuration: Single PLC Device
+# Copy this file to config.toml and modify as needed
+
+[server]
+# JSON-RPC server port
+rpc_port = 8080
+
+# HTTP management API port
+http_port = 8081
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Log file path (optional, defaults to stdout)
+# file = "/var/log/roboplc-middleware.log"
+
+# Rotate logs daily
+daily_rotation = true
+
+# Single PLC device configuration
+[[devices]]
+id = "plc-main"
+type = "plc"
+address = "192.168.1.100"
+port = 502
+unit_id = 1
+
+# Addressing mode: "zero_based" (0-based) or "one_based" (1-based)
+addressing_mode = "zero_based"
+
+# Byte order for 32-bit values: "big_endian", "little_endian", 
+# "big_endian_byte_swap", "little_endian_byte_swap"
+byte_order = "big_endian"
+
+# TCP_NODELAY option for lower latency
+tcp_nodelay = true
+
+# Maximum concurrent Modbus operations
+max_concurrent_ops = 3
+
+# Heartbeat interval in seconds
+heartbeat_interval_sec = 30
+
+# Register mappings for this device
+[[devices.register_mappings]]
+signal_name = "motor_speed"
+address = "h100"
+data_type = "U16"
+access = "rw"
+description = "Motor speed setpoint (RPM)"
+
+[[devices.register_mappings]]
+signal_name = "motor_status"
+address = "h101"
+data_type = "U16"
+access = "r"
+description = "Motor status (0=stopped, 1=running, 2=fault)"
+
+[[devices.register_mappings]]
+signal_name = "temperature"
+address = "h200"
+data_type = "I16"
+access = "r"
+description = "Temperature reading (°C x10)"
+
+[[devices.register_mappings]]
+signal_name = "pressure"
+address = "h202"
+data_type = "F32"
+access = "r"
+description = "Pressure reading (bar)"
+
+[[devices.register_mappings]]
+signal_name = "run_command"
+address = "c0"
+data_type = "Bool"
+access = "rw"
+description = "Start/stop command (coil)"

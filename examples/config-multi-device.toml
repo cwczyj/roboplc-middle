@@ -1,0 +1,121 @@
+# Example Configuration: Multi-Device Setup
+# Demonstrates connecting to multiple PLCs and a robot arm
+
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+daily_rotation = true
+
+# PLC Device 1 - Production Line Controller
+[[devices]]
+id = "plc-production"
+type = "plc"
+address = "192.168.1.10"
+port = 502
+unit_id = 1
+addressing_mode = "zero_based"
+byte_order = "big_endian"
+tcp_nodelay = true
+max_concurrent_ops = 5
+heartbeat_interval_sec = 15
+
+[[devices.register_mappings]]
+signal_name = "line_speed"
+address = "h0"
+data_type = "U16"
+access = "rw"
+
+[[devices.register_mappings]]
+signal_name = "line_status"
+address = "h1"
+data_type = "U16"
+access = "r"
+
+[[devices.register_mappings]]
+signal_name = "product_count"
+address = "h10"
+data_type = "U32"
+access = "r"
+
+# PLC Device 2 - Quality Control
+[[devices]]
+id = "plc-quality"
+type = "plc"
+address = "192.168.1.11"
+port = 502
+unit_id = 1
+addressing_mode = "zero_based"
+byte_order = "big_endian"
+tcp_nodelay = true
+max_concurrent_ops = 3
+heartbeat_interval_sec = 20
+
+[[devices.register_mappings]]
+signal_name = "inspection_result"
+address = "h0"
+data_type = "U16"
+access = "r"
+
+[[devices.register_mappings]]
+signal_name = "reject_count"
+address = "h1"
+data_type = "U16"
+access = "r"
+
+[[devices.register_mappings]]
+signal_name = "calibration_factor"
+address = "h10"
+data_type = "F32"
+access = "rw"
+
+# Robot Arm - 6-Axis Manipulator
+[[devices]]
+id = "robot-arm-1"
+type = "robot_arm"
+address = "192.168.1.20"
+port = 502
+unit_id = 1
+addressing_mode = "zero_based"
+byte_order = "little_endian"
+tcp_nodelay = true
+max_concurrent_ops = 2
+heartbeat_interval_sec = 10
+
+# Robot position registers
+[[devices.register_mappings]]
+signal_name = "axis_x"
+address = "h100"
+data_type = "F32"
+access = "rw"
+description = "X-axis position (mm)"
+
+[[devices.register_mappings]]
+signal_name = "axis_y"
+address = "h102"
+data_type = "F32"
+access = "rw"
+description = "Y-axis position (mm)"
+
+[[devices.register_mappings]]
+signal_name = "axis_z"
+address = "h104"
+data_type = "F32"
+access = "rw"
+description = "Z-axis position (mm)"
+
+[[devices.register_mappings]]
+signal_name = "gripper_state"
+address = "h106"
+data_type = "U16"
+access = "rw"
+description = "Gripper state (0=open, 1=closed, 2=error)"
+
+[[devices.register_mappings]]
+signal_name = "move_command"
+address = "c0"
+data_type = "Bool"
+access = "rw"
+description = "Trigger movement to target position"
