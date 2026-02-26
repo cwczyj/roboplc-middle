@@ -1,24 +1,59 @@
-use roboplc::prelude::*;
-use roboplc::controller::prelude::*;
-use crate::{Message, Variables};
 use crate::config::Config;
+use crate::{Message, Variables};
+use roboplc::controller::prelude::*;
+use roboplc::prelude::*;
 use std::collections::HashMap;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+
+/// Correlation ID for request/response matching
+static CORRELATION_ID: AtomicU64 = AtomicU64::new(0);
+
+/// Pending request tracking for async response routing
+#[derive(Debug)]
+struct PendingRequest {
+    correlation_id: u64,
+    device_id: String,
+    operation: crate::Operation,
+    response_tx: Sender<DeviceResponseData>,
+    timestamp_ms: u64,
+}
+
+/// Device response data structure
+#[derive(Debug, Clone)]
+struct DeviceResponseData {
+    success: bool,
+    data: serde_json::Value,
+    error: Option<String>,
+}
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "device_manager")]
 pub struct DeviceManager {
     config: Config,
-    device_clients: HashMap<String, DeviceClient>, // Will be implemented later
+    pending_requests: HashMap<u64, PendingRequest>,
+    request_timeout_ms: u64,
 }
-
-struct DeviceClient; // Placeholder
 
 impl DeviceManager {
     pub fn new(config: Config) -> Self {
         Self {
             config,
-            device_clients: HashMap::new(),
+            pending_requests: HashMap::new(),
+            request_timeout_ms: 5000, // 5 second timeout
         }
+    }
+
+    fn next_correlation_id() -> u64 {
+        CORRELATION_ID.fetch_add(1, Ordering::SeqCst)
+    }
+
+    fn cleanup_expired_requests(&mut self, now_ms: u64) {
+        self.pending_requests
+            .retain(|_, req| now_ms.saturating_sub(req.timestamp_ms) < self.request_timeout_ms);
     }
 }
 
@@ -29,44 +64,54 @@ impl Worker<Message, Variables> for DeviceManager {
             event_matches!(Message::DeviceControl { .. } | Message::DeviceResponse { .. }),
         )?;
 
+        tracing::info!(
+            "Device Manager started, routing {} devices",
+            self.config.devices.len()
+        );
+
         for msg in client {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+
+
+            if now_ms % 1000 == 0 {
+                self.cleanup_expired_requests(now_ms);
+            }
+
             match msg {
-                Message::DeviceControl { device_id, operation, params } => {
-                    // TODO: Route DeviceControl to appropriate Modbus worker
-                    // Architecture: When a DeviceControl message is received:
-                    // 1. Look up the device in device_clients HashMap
-                    // 2. Forward the operation and params to the specific Modbus worker
-                    // 3. The Modbus worker will execute the operation and send DeviceResponse back
-                    //
-                    // Implementation note: Each Modbus worker should register with Hub using
-                    // a unique pattern like "modbus_<device_id>" to receive targeted commands.
-                    tracing::info!(
-                        device_id,
+                Message::DeviceControl {
+                    device_id,
+                    operation,
+                    params,
+                } => {
+                    // TODO: Forward to appropriate Modbus worker
+
+                    tracing::debug!(
+                        device_id = %device_id,
                         operation = ?operation,
-                        "Received DeviceControl - routing not yet implemented"
+                        "Received DeviceControl request"
                     );
                 }
-                Message::DeviceResponse { device_id, success, data, error } => {
-                    // TODO: Route DeviceResponse back to RPC worker
-                    // Architecture: When a DeviceResponse message is received:
-                    // 1. Check if there's a pending request from RPC worker for this device_id
-                    // 2. Send the response back via Hub to the RPC worker
-                    // 3. The RPC worker will respond to the original RPC client
-                    //
-                    // Implementation note: RPC worker needs to:
-                    // - Register with Hub to receive DeviceResponse messages
-                    // - Track pending requests with unique request IDs
-                    // - Correlate responses back to the original RPC calls
-                    tracing::info!(
-                        device_id,
-                        success,
-                        error = error.as_deref(),
-                        "Received DeviceResponse - routing not yet implemented"
+                Message::DeviceResponse {
+                    device_id,
+                    success,
+                    data,
+                    error,
+                } => {
+                    // TODO: Route response back to requester
+                    tracing::debug!(
+                        device_id = %device_id,
+                        success = success,
+                        "Received DeviceResponse"
                     );
                 }
                 _ => {}
             }
         }
+
+        tracing::info!("Device Manager stopped");
         Ok(())
     }
 }
