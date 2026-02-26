@@ -58,3 +58,9 @@
 - Map `Connecting` to `DeviceEventType::Reconnecting` so downstream monitors can treat retry loops distinctly from hard disconnects.
 - Keep event emission testable by routing through closure-based helpers (`update_connection_state_with`, `record_communication_with`), while production wrappers still push into `context.variables()` buffers.
 - Record successful heartbeat as communication (`last_communication = Some(SystemTime::now())`) and push a `LatencySample` in the same path for consistent observability updates.
+
+### Latency Anomaly Monitoring Pattern (Task 25)
+- Maintain per-device rolling latency stats with `HashMap<String, LatencyStats>` to avoid cross-device contamination of baselines.
+- Use fixed-size `VecDeque<u64>` window (`LATENCY_WINDOW = 100`) and recompute mean/variance on each insertion for predictable behavior and simpler correctness.
+- Apply anomaly detection only after a minimum baseline (`MIN_ANOMALY_SAMPLES = 10`) and flag samples above `mean + 3 * std_dev`.
+- Evaluate anomaly status against pre-insert statistics, then insert current sample so each event reflects deviation from historical trend.
