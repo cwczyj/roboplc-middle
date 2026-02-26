@@ -16,6 +16,9 @@ use crate::Variables;
     deny_unknown_fields
 )]
 enum RpcMethod<'a> {
+    Ping {},
+    GetVersion {},
+    GetDeviceList {},
     GetStatus {
         device_id: &'a str,
     },
@@ -48,6 +51,12 @@ enum RpcResultType {
     Success {
         success: bool,
     },
+    Version {
+        version: String,
+    },
+    DeviceList {
+        devices: Vec<String>,
+    },
     Data {
         data: serde_json::Value,
     },
@@ -61,11 +70,13 @@ enum RpcResultType {
     },
 }
 
-struct RpcHandler;
+struct RpcHandler {
+    device_ids: Vec<String>,
+}
 
 impl RpcHandler {
-    pub fn new(_rpc_port: u16) -> Self {
-        Self
+    pub fn new(device_ids: Vec<String>) -> Self {
+        Self { device_ids }
     }
 }
 
@@ -80,6 +91,13 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
         _source: Self::Source,
     ) -> RpcResult<Self::Result> {
         match method {
+            RpcMethod::Ping {} => Ok(RpcResultType::Success { success: true }),
+            RpcMethod::GetVersion {} => Ok(RpcResultType::Version {
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            }),
+            RpcMethod::GetDeviceList {} => Ok(RpcResultType::DeviceList {
+                devices: self.device_ids.clone(),
+            }),
             RpcMethod::GetStatus { device_id: _ } => Ok(RpcResultType::Status {
                 connected: false,
                 last_communication_ms: 0,
@@ -130,7 +148,10 @@ impl Worker<Message, Variables> for RpcWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         let port = self.config.server.rpc_port;
         let bind_addr = format!("0.0.0.0:{}", port);
-        let handler = RpcHandler::new(port);
+
+        // Collect device IDs from config
+        let device_ids: Vec<String> = self.config.devices.iter().map(|d| d.id.clone()).collect();
+        let handler = RpcHandler::new(device_ids);
         let server = RpcServer::new(handler);
 
         let listener = match std::net::TcpListener::bind(&bind_addr) {
