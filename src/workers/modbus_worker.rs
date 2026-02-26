@@ -4,7 +4,7 @@ use roboplc::comm::Client;
 use roboplc::controller::prelude::*;
 use roboplc::io::modbus::prelude::*;
 use roboplc::{comm::tcp, time::interval};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -70,6 +70,63 @@ impl Backoff {
     }
 }
 
+#[allow(dead_code)]
+struct OperationQueue<T> {
+    pending: VecDeque<T>,
+    in_flight: usize,
+    max_in_flight: usize,
+}
+
+#[allow(dead_code)]
+impl<T> OperationQueue<T> {
+    fn new(max_in_flight: usize) -> Self {
+        Self {
+            pending: VecDeque::new(),
+            in_flight: 0,
+            max_in_flight,
+        }
+    }
+
+    fn push(&mut self, op: T) {
+        self.pending.push_back(op);
+    }
+
+    fn can_start(&self) -> bool {
+        self.in_flight < self.max_in_flight
+    }
+
+    fn start_next(&mut self) -> Option<T> {
+        if self.can_start() {
+            if let Some(op) = self.pending.pop_front() {
+                self.in_flight += 1;
+                return Some(op);
+            }
+        }
+        None
+    }
+
+    fn complete(&mut self) {
+        if self.in_flight > 0 {
+            self.in_flight -= 1;
+        }
+    }
+
+    fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    fn in_flight_count(&self) -> usize {
+        self.in_flight
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ModbusOp {
+    ReadHolding { address: u16, count: u16 },
+    WriteSingle { address: u16, value: u16 },
+    WriteMultiple { address: u16, values: Vec<u16> },
+}
+
 struct ModbusClient {
     endpoint: String,
     connection: Option<Client>,
@@ -122,11 +179,15 @@ pub struct ModbusWorker {
     last_communication: Option<SystemTime>,
     last_heartbeat: SystemTime,
     pending_transactions: HashMap<u16, TransactionId>,
+    #[allow(dead_code)]
+    operation_queue: OperationQueue<ModbusOp>,
     backoff: Backoff,
 }
 
 impl ModbusWorker {
     pub fn new(device: Device) -> Self {
+        let max_in_flight = device.max_concurrent_ops as usize;
+
         Self {
             device,
             client: None,
@@ -134,6 +195,7 @@ impl ModbusWorker {
             last_communication: None,
             last_heartbeat: SystemTime::UNIX_EPOCH,
             pending_transactions: HashMap::new(),
+            operation_queue: OperationQueue::new(max_in_flight),
             backoff: Backoff::new(),
         }
     }
@@ -413,5 +475,84 @@ mod tests {
 
         assert_eq!(backoff.attempts, 0);
         assert_eq!(backoff.next_delay_ms, BACKOFF_BASE_MS);
+    }
+
+    #[test]
+    fn operation_queue_limits_concurrency_and_tracks_in_flight() {
+        let mut queue = OperationQueue::new(2);
+        queue.push(ModbusOp::ReadHolding {
+            address: 100,
+            count: 2,
+        });
+        queue.push(ModbusOp::WriteSingle {
+            address: 101,
+            value: 42,
+        });
+        queue.push(ModbusOp::WriteMultiple {
+            address: 102,
+            values: vec![1, 2, 3],
+        });
+
+        assert_eq!(queue.pending_count(), 3);
+        assert_eq!(queue.in_flight_count(), 0);
+        assert!(queue.can_start());
+
+        let op1 = queue.start_next();
+        let op2 = queue.start_next();
+        let op3 = queue.start_next();
+
+        assert!(op1.is_some());
+        assert!(op2.is_some());
+        assert!(op3.is_none());
+        assert_eq!(queue.in_flight_count(), 2);
+        assert_eq!(queue.pending_count(), 1);
+        assert!(!queue.can_start());
+    }
+
+    #[test]
+    fn operation_queue_complete_allows_next_queued_operation() {
+        let mut queue = OperationQueue::new(1);
+        queue.push(ModbusOp::ReadHolding {
+            address: 200,
+            count: 1,
+        });
+        queue.push(ModbusOp::WriteSingle {
+            address: 201,
+            value: 7,
+        });
+
+        let first = queue.start_next();
+        let blocked = queue.start_next();
+
+        assert!(first.is_some());
+        assert!(blocked.is_none());
+        assert_eq!(queue.in_flight_count(), 1);
+        assert_eq!(queue.pending_count(), 1);
+
+        queue.complete();
+        let second = queue.start_next();
+
+        assert!(second.is_some());
+        assert_eq!(queue.in_flight_count(), 1);
+        assert_eq!(queue.pending_count(), 0);
+    }
+
+    #[test]
+    fn operation_queue_complete_is_saturating_at_zero() {
+        let mut queue: OperationQueue<ModbusOp> = OperationQueue::new(1);
+
+        queue.complete();
+        assert_eq!(queue.in_flight_count(), 0);
+
+        queue.push(ModbusOp::ReadHolding {
+            address: 300,
+            count: 1,
+        });
+        let _ = queue.start_next();
+        assert_eq!(queue.in_flight_count(), 1);
+
+        queue.complete();
+        queue.complete();
+        assert_eq!(queue.in_flight_count(), 0);
     }
 }

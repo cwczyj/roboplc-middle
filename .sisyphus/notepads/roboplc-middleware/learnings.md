@@ -64,3 +64,9 @@
 - Use fixed-size `VecDeque<u64>` window (`LATENCY_WINDOW = 100`) and recompute mean/variance on each insertion for predictable behavior and simpler correctness.
 - Apply anomaly detection only after a minimum baseline (`MIN_ANOMALY_SAMPLES = 10`) and flag samples above `mean + 3 * std_dev`.
 - Evaluate anomaly status against pre-insert statistics, then insert current sample so each event reflects deviation from historical trend.
+
+### Connection Pool Limits Scaffolding (Task 27)
+- Implement queue state with `OperationQueue<T> { pending: VecDeque<T>, in_flight, max_in_flight }` in `modbus_worker.rs`; `start_next` increments in-flight only when capacity exists and `complete` decrements safely.
+- Keep queue generic and operation enum explicit (`ModbusOp::{ReadHolding, WriteSingle, WriteMultiple}`) so later register-I/O wiring can reuse the same queue primitives without API churn.
+- Initialize worker queue from config (`device.max_concurrent_ops as usize`) during `ModbusWorker::new` so per-device concurrency policy is enforced at construction time.
+- For placeholder task stages where queue is not consumed yet, use targeted `#[allow(dead_code)]` on queue scaffolding to keep `lsp_diagnostics` clean without changing behavior.
