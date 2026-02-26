@@ -4,6 +4,8 @@ pub mod messages;
 pub mod profiles;
 pub mod workers;
 
+pub use messages::{Message, Operation, SystemStatusResponse};
+
 use parking_lot_rt::RwLock;
 use rtsc::buf::DataBuffer;
 use std::collections::HashMap;
