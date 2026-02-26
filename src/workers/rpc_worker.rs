@@ -1,6 +1,7 @@
 use roboplc::controller::prelude::*;
 use roboplc_rpc::{dataformat::Json, server::RpcServer, server::RpcServerHandler, RpcResult};
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 
 use crate::config::Config;
@@ -60,13 +61,11 @@ enum RpcResultType {
     },
 }
 
-struct RpcHandler {
-    rpc_port: u16,
-}
+struct RpcHandler;
 
 impl RpcHandler {
-    pub fn new(rpc_port: u16) -> Self {
-        Self { rpc_port }
+    pub fn new(_rpc_port: u16) -> Self {
+        Self
     }
 }
 
@@ -129,13 +128,81 @@ impl RpcWorker {
 
 impl Worker<Message, Variables> for RpcWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
-        tracing::info!(
-            "RPC Server Worker started on port {}",
-            self.config.server.rpc_port
-        );
-        while context.is_online() {
-            std::thread::sleep(std::time::Duration::from_secs(1));
+        let port = self.config.server.rpc_port;
+        let bind_addr = format!("0.0.0.0:{}", port);
+        let handler = RpcHandler::new(port);
+        let server = RpcServer::new(handler);
+
+        let listener = match std::net::TcpListener::bind(&bind_addr) {
+            Ok(listener) => listener,
+            Err(error) => {
+                tracing::error!(%error, "RPC Server Worker failed to bind {}", bind_addr);
+                return Ok(());
+            }
+        };
+        if let Err(error) = listener.set_nonblocking(true) {
+            tracing::error!(
+                %error,
+                "RPC Server Worker failed to set non-blocking mode on {}",
+                bind_addr
+            );
+            return Ok(());
         }
+
+        tracing::info!("RPC Server Worker started on {}", bind_addr);
+
+        while context.is_online() {
+            match listener.accept() {
+                Ok((mut stream, source)) => {
+                    if let Err(error) =
+                        stream.set_read_timeout(Some(std::time::Duration::from_millis(200)))
+                    {
+                        tracing::warn!(%source, %error, "failed to set read timeout");
+                    }
+
+                    let mut request_payload = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    loop {
+                        match stream.read(&mut buf) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                request_payload.extend_from_slice(&buf[..n]);
+                            }
+                            Err(e)
+                                if e.kind() == std::io::ErrorKind::WouldBlock
+                                    || e.kind() == std::io::ErrorKind::TimedOut =>
+                            {
+                                break;
+                            }
+                            Err(error) => {
+                                tracing::warn!(%source, %error, "failed reading RPC request payload");
+                                break;
+                            }
+                        }
+                    }
+
+                    if request_payload.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(response_payload) =
+                        server.handle_request_payload::<Json>(&request_payload, source)
+                    {
+                        if let Err(error) = stream.write_all(&response_payload) {
+                            tracing::warn!(%source, %error, "failed writing RPC response payload");
+                        }
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "RPC Server Worker accept error");
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        }
+
         tracing::info!("RPC Server Worker stopped");
         Ok(())
     }

@@ -70,3 +70,9 @@
 - Keep queue generic and operation enum explicit (`ModbusOp::{ReadHolding, WriteSingle, WriteMultiple}`) so later register-I/O wiring can reuse the same queue primitives without API churn.
 - Initialize worker queue from config (`device.max_concurrent_ops as usize`) during `ModbusWorker::new` so per-device concurrency policy is enforced at construction time.
 - For placeholder task stages where queue is not consumed yet, use targeted `#[allow(dead_code)]` on queue scaffolding to keep `lsp_diagnostics` clean without changing behavior.
+
+### JSON-RPC Server Transport Pattern (Task 29)
+- `roboplc-rpc` `RpcServer::new(handler)` only handles payload parsing/dispatch; it does **not** provide socket listener lifecycle.
+- Implement transport explicitly with `std::net::TcpListener` and forward raw request bytes into `server.handle_request_payload::<Json>(&payload, source)`.
+- For worker shutdown compatibility, bind listener in non-blocking mode and poll `context.is_online()` between `accept()` attempts (short sleep on `WouldBlock`).
+- Per-connection read timeout (`set_read_timeout`) avoids indefinite blocking while still allowing multi-chunk payload accumulation before dispatch.
