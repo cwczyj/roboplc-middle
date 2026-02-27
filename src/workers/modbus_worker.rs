@@ -1,3 +1,25 @@
+//! # Modbus Worker
+//!
+//! 管理 Modbus TCP 设备连接和通信的核心 worker。
+//!
+//! ## 功能
+//!
+//! - 维护与 Modbus 设备的 TCP 连接
+//! - 处理来自 RpcWorker 的设备控制请求
+//! - 实现指数退避重连机制
+//! - 监控设备延迟和状态
+//! - 发送周期性心跳
+//!
+//! ## 架构
+//!
+//! ModbusWorker 作为 RoboPLC worker 运行在独立的线程中。
+//! 连接断开后会自动重连，使用指数退避策略避免雷群效应。
+//!
+//! ## 使用方式
+//!
+//! ModbusWorker 由 DeviceManager 创建和管理，无需手动实例化。
+
+
 use crate::config::Device;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
 use roboplc::comm::Client;
