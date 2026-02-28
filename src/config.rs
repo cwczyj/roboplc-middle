@@ -17,11 +17,13 @@
 //! ## 使用方式
 //!
 //! ```rust,no_run
-//! use roboplc_middleware::config::Config;
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     use roboplc_middleware::config::Config;
 //!
-//! let config = Config::from_file("config.toml")?;
-//! println!("RPC port: {}", config.server.rpc_port);
-//! ```
+//!     let config = Config::from_file("config.toml")?;
+//!     println!("RPC port: {}", config.server.rpc_port);
+//!     Ok(())
+//! }
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -308,11 +310,13 @@ impl Config {
     /// # 示例
     ///
     /// ```rust,no_run
-    /// use roboplc_middleware::config::Config;
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     use roboplc_middleware::config::Config;
     ///
-    /// let config = Config::from_file("config.toml")?;
-    /// println!("Loaded {} devices", config.devices.len());
-    /// ```
+    ///     let config = Config::from_file("config.toml")?;
+    ///     println!("Loaded {} devices", config.devices.len());
+    ///     Ok(())
+    /// }
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         // 读取配置文件内容
         let content = fs::read_to_string(path)?;
