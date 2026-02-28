@@ -29,7 +29,18 @@
 //! 每个独立运行在自己的线程中，通过 Hub 进行消息传递。
 
 use roboplc::controller::prelude::*;
-use roboplc_middleware::{Message, Variables};
+use roboplc_middleware::{
+    config::Config,
+    workers::{
+        config_loader::ConfigLoader,
+        http_worker::HttpWorker,
+        latency_monitor::LatencyMonitor,
+        manager::DeviceManager,
+        modbus_worker::ModbusWorker,
+        rpc_worker::RpcWorker,
+    },
+    Message, Variables,
+};
 
 /// 程序主入口
 ///
@@ -57,6 +68,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建 RoboPLC 控制器
     // Controller 管理所有 workers 和消息路由（Hub）
     let mut controller: Controller<Message, Variables> = Controller::new();
+
+    // 加载配置文件
+    let config_path = "config.toml";
+    let config = Config::from_file(config_path).expect("Failed to load config.toml");
+
+    // 注册所有 workers
+
+    // 1. RpcWorker - JSON-RPC 2.0 服务器 (端口 8080)
+    controller.spawn_worker(RpcWorker::new(config.clone()))?;
+
+    // 2. HttpWorker - HTTP API 服务器 (端口 8081)
+    controller.spawn_worker(HttpWorker::new(config.clone()))?;
+
+    // 3. DeviceManager - 设备管理器，路由消息
+    controller.spawn_worker(DeviceManager::new(config.clone()))?;
+
+    // 4. ConfigLoader - 配置热加载
+    controller.spawn_worker(ConfigLoader::new(config_path.to_string(), config.clone()))?;
+
+    // 5. LatencyMonitor - 延迟监控
+    controller.spawn_worker(LatencyMonitor::new())?;
+
+    // 6. 为每个设备创建一个 ModbusWorker
+    for device in &config.devices {
+        controller.spawn_worker(ModbusWorker::new(device.clone()))?;
+    }
 
     // 注册信号处理器
     // 捕获 SIGINT (Ctrl+C) 和 SIGTERM 信号，优雅地关闭程序
