@@ -26,6 +26,10 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+portpicker = "0.1"
+
+
 
 [profile.release]
 opt-level = 3
