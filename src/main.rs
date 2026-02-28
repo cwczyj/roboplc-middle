@@ -5,7 +5,7 @@
 //! ## 功能
 //!
 //! 1. 初始化 RoboPLC 控制器
-//! 2. 配置日志系统
+//! 2. 配置日志系统（从配置文件读取）
 //! 3. 注册信号处理器（SIGINT, SIGTERM）
 //! 4. 启动所有 workers 并进入主循环
 //!
@@ -32,15 +32,14 @@ use roboplc::controller::prelude::*;
 use roboplc_middleware::{
     config::Config,
     workers::{
-        config_loader::ConfigLoader,
-        http_worker::HttpWorker,
-        latency_monitor::LatencyMonitor,
-        manager::DeviceManager,
-        modbus_worker::ModbusWorker,
-        rpc_worker::RpcWorker,
+        config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
+        manager::DeviceManager, modbus_worker::ModbusWorker, rpc_worker::RpcWorker,
     },
     Message, Variables,
 };
+use std::path::Path;
+use tracing_appender::rolling;
+use tracing_subscriber::fmt;
 
 /// 程序主入口
 ///
@@ -58,20 +57,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 设置 panic 钩子，在程序崩溃时记录日志
     roboplc::setup_panic();
 
-    // 配置日志系统，Info 级别及以上输出
-    roboplc::configure_logger(roboplc::LevelFilter::Info);
-
     // 设置模拟模式，跳过实时调度要求
     // 在生产环境中，移除此行以使用实时调度
     roboplc::set_simulated();
 
-    // 创建 RoboPLC 控制器
-    // Controller 管理所有 workers 和消息路由（Hub）
-    let mut controller: Controller<Message, Variables> = Controller::new();
-
     // 加载配置文件
     let config_path = "config.toml";
     let config = Config::from_file(config_path).expect("Failed to load config.toml");
+
+    // 配置日志系统
+    // 根据配置文件中的 logging 配置设置日志输出
+    if config.logging.file.is_empty() {
+        // 如果没有配置日志文件，只输出到控制台
+        fmt().init();
+    } else {
+        // 配置文件日志输出
+        let log_path = Path::new(&config.logging.file);
+        let file_appender = if config.logging.daily_rotation {
+            // 按天轮转日志文件
+            rolling::daily(log_path.parent().unwrap(), log_path.file_name().unwrap())
+        } else {
+            // 不轮转，固定日志文件
+            rolling::never(log_path.parent().unwrap(), log_path.file_name().unwrap())
+        };
+
+        // 使用非阻塞的文件追加器，避免阻塞主线程
+        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+        // 初始化日志订阅器，同时输出到文件
+        fmt().with_writer(non_blocking).finish();
+
+        eprintln!("Logging to file: {}", config.logging.file);
+    }
+
+    eprintln!("Log level: {}", config.logging.level);
+
+    // 创建 RoboPLC 控制器
+    // Controller 管理所有 workers 和消息路由（Hub）
+    let mut controller: Controller<Message, Variables> = Controller::new();
 
     // 注册所有 workers
 
