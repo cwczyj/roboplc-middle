@@ -19,6 +19,8 @@
 //!
 //! ModbusWorker 由 DeviceManager 创建和管理，无需手动实例化。
 
+// ==================== 导入依赖 ====================
+
 use crate::config::Device;
 use crate::messages::Operation;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
@@ -33,12 +35,18 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+// ==================== 常量定义 ====================
+
 const BASE_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKOFF_BASE_MS: u64 = 100;
 const BACKOFF_MAX_MS: u64 = 30000;
 
+// 全局事务计数器
+
 static TRANSACTION_COUNTER: AtomicU16 = AtomicU16::new(0);
+
+// ==================== TransactionId ====================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransactionId {
@@ -59,12 +67,16 @@ impl TransactionId {
     }
 }
 
+// ==================== ConnectionState ====================
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {
     Disconnected,
     Connecting,
     Connected,
 }
+
+// ==================== Backoff 指数退避 ====================
 
 #[derive(Debug, Clone, Copy)]
 struct Backoff {
@@ -95,6 +107,8 @@ impl Backoff {
         self.next_delay_ms = BACKOFF_BASE_MS;
     }
 }
+
+// ==================== TimeoutHandler ====================
 
 #[derive(Debug, Clone, Copy)]
 struct TimeoutHandler {
@@ -128,6 +142,8 @@ impl TimeoutHandler {
         self.current >= self.max
     }
 }
+
+// ==================== OperationQueue ====================
 
 struct OperationQueue<T> {
     pending: VecDeque<T>,
@@ -177,6 +193,8 @@ impl<T> OperationQueue<T> {
     }
 }
 
+// ==================== ModbusOp ====================
+
 #[derive(Debug, Clone)]
 pub enum ModbusOp {
     ReadHolding { address: u16, count: u16 },
@@ -197,6 +215,8 @@ struct QueuedOperation {
     operation: ModbusOp,
     correlation_id: u64,
 }
+
+// ==================== ModbusClient ====================
 
 struct ModbusClient {
     endpoint: String,
@@ -395,6 +415,8 @@ impl ModbusClient {
         }
     }
 }
+
+// ==================== ModbusWorker ====================
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "modbus_worker", cpu = 1, scheduling = "fifo", priority = 80)]
@@ -850,6 +872,8 @@ impl ModbusWorker {
     }
 }
 
+// ==================== Worker trait 实现 ====================
+
 impl Worker<Message, Variables> for ModbusWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         let worker_name = format!("modbus_worker_{}", self.device.id);
@@ -1015,6 +1039,8 @@ impl Worker<Message, Variables> for ModbusWorker {
         Ok(())
     }
 }
+
+// ==================== 单元测试 ====================
 
 #[cfg(test)]
 mod tests {
