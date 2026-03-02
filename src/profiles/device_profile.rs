@@ -114,11 +114,11 @@ impl RegisterPair {
     pub fn to_u32(&self) -> u32 {
         ((self.high as u32) << 16) | (self.low as u32)
     }
-    
+
     pub fn to_i32(&self) -> i32 {
         self.to_u32() as i32
     }
-    
+
     pub fn to_f32(&self) -> f32 {
         f32::from_bits(self.to_u32())
     }
@@ -296,22 +296,31 @@ mod tests {
     }
     #[test]
     fn test_register_pair_u32() {
-        let pair = RegisterPair { high: 0x1234, low: 0x5678 };
+        let pair = RegisterPair {
+            high: 0x1234,
+            low: 0x5678,
+        };
         assert_eq!(pair.to_u32(), 0x12345678);
     }
-    
+
     #[test]
     fn test_register_pair_f32() {
-        let pair = RegisterPair { high: 0x4049, low: 0x0FDB };
+        let pair = RegisterPair {
+            high: 0x4049,
+            low: 0x0FDB,
+        };
         assert!((pair.to_f32() - 3.14159).abs() < 0.001);
     }
-    
+
     #[test]
     fn test_register_pair_i32() {
-        let pair = RegisterPair { high: 0xFFFF, low: 0xFFFF };
+        let pair = RegisterPair {
+            high: 0xFFFF,
+            low: 0xFFFF,
+        };
         assert_eq!(pair.to_i32(), -1);
     }
-    
+
     #[test]
     fn test_register_pair_zero() {
         let pair = RegisterPair { high: 0, low: 0 };
@@ -319,5 +328,4 @@ mod tests {
         assert_eq!(pair.to_i32(), 0);
         assert_eq!(pair.to_f32(), 0.0);
     }
-
 }
