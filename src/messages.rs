@@ -30,12 +30,14 @@ pub enum Message {
         device_id: String,
         operation: Operation,
         params: JsonValue,
+        correlation_id: u64,
     },
     DeviceResponse {
         device_id: String,
         success: bool,
         data: JsonValue,
         error: Option<String>,
+        correlation_id: u64,
     },
     #[data_delivery(always)]
     DeviceHeartbeat {

@@ -83,3 +83,24 @@
 - Device Manager receives `DeviceControl` and `DeviceResponse` via Hub registration.
 - Full integration requires channel-based architecture between RpcWorker and RpcHandler, or trait modification to pass Hub context.
 - Message routing architecture: RPC worker → Hub → Device Manager → Modbus workers → Hub → RPC worker.
+
+### Testing Infrastructure (Wave 8)
+- **Mock Modbus Server**: Created `tests/mock_modbus.rs` with a full TCP-based mock server that handles all standard Modbus function codes (read/write holding registers, input registers, coils, discrete inputs).
+- **Mock server auto-port**: Use `MockModbusServer::start(MockModbusConfig::default())` to get auto-assigned port for parallel test execution.
+- **Test organization**: Integration tests in `tests/` directory, each test file is a separate Cargo test target.
+- **Private types**: Worker internals (Backoff, TimeoutHandler, OperationQueue) are private - test through public APIs only.
+- **Test patterns**: Use `tempfile::NamedTempFile` for config file tests, `parking_lot_rt::RwLock` for concurrent state tests.
+- **Test count**: 72 tests total (35 lib unit tests + 5 e2e + 9 config tests + 5 HTTP tests + 7 worker tests + 5 integration tests + 4 mock server tests + 2 doc tests).
+- **AddressMapping API**: `AddressMapping::parse(addr)` takes a single argument and returns `Option<Self>` - the addressing mode is internal to the mapping.
+- **DataBuffer capacity**: `DataBuffer::bounded(n)` doesn't expose capacity() method publicly - test through `len()` after overflow.
+
+### Testing Infrastructure (Wave 8)
+- **Mock Modbus Server**: Created `tests/mock_modbus.rs` with a full TCP-based mock server that handles all standard Modbus function codes (read/write holding registers, input registers, coils, discrete inputs).
+- **Mock server auto-port**: Use `MockModbusServer::start(MockModbusConfig::default())` to get auto-assigned port for parallel test execution.
+- **Test organization**: Integration tests in `tests/` directory, each test file is a separate Cargo test target.
+- **Private types**: Worker internals (Backoff, TimeoutHandler, OperationQueue) are private - test through public APIs only.
+- **Test patterns**: Use `tempfile::NamedTempFile` for config file tests, `parking_lot_rt::RwLock` for concurrent state tests.
+- **Test count**: 72 tests total (35 lib unit tests + 5 e2e + 9 config tests + 5 HTTP tests + 7 worker tests + 5 integration tests + 4 mock server tests + 2 doc tests).
+- **AddressMapping API**: `AddressMapping::parse(addr)` takes a single argument and returns `Option<Self>` - the addressing mode is internal to the mapping.
+- **DataBuffer capacity**: `DataBuffer::bounded(n)` creates a buffer but capacity() method is private - use len() to check occupancy.
+- **Test coverage**: Functional tests for config validation, HTTP API, worker creation; mock server provides Modbus protocol testing.

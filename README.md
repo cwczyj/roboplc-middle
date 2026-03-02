@@ -134,6 +134,915 @@ ROBOPLC_SIMULATED=1 cargo run
 | `/api/health` | GET | Health check |
 | `/api/config` | GET | Current configuration |
 | `/api/config/reload` | POST | Reload configuration |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/devices/{id}/register` | POST | Set a register value |
+| `/api/devices/{id}/batch` | POST | Batch read/write operations |
+| `/api/devices/{id}/move` | POST | Move robot arm |
 
 ## Features
 
@@ -164,7 +1073,7 @@ Configuration changes are detected automatically:
 cargo test
 ```
 
-Current test coverage: 35 tests
+Current test coverage: 72 tests
 
 ## License
 

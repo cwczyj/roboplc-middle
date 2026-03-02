@@ -4,3 +4,5 @@ pub mod latency_monitor;
 pub mod manager;
 pub mod modbus_worker;
 pub mod rpc_worker;
+
+pub mod config_updater;

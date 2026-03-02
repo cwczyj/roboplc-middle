@@ -2,59 +2,43 @@ use crate::config::Config;
 use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use roboplc::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-};
 use std::time;
-
-/// Correlation ID for request/response matching
-static CORRELATION_ID: AtomicU64 = AtomicU64::new(0);
-
-/// Pending request tracking for async response routing
-#[derive(Debug)]
-struct PendingRequest {
-    correlation_id: u64,
-    device_id: String,
-    operation: crate::Operation,
-    response_tx: Sender<DeviceResponseData>,
-    timestamp_ms: u64,
-}
-
-/// Device response data structure
-#[derive(Debug, Clone)]
-struct DeviceResponseData {
-    success: bool,
-    data: serde_json::Value,
-    error: Option<String>,
+/// Response data sent back to requesters via channel
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceResponseData {
+    pub success: bool,
+    pub data: serde_json::Value,
+    pub error: Option<String>,
 }
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "device_manager")]
 pub struct DeviceManager {
     config: Config,
-    pending_requests: HashMap<u64, PendingRequest>,
-    request_timeout_ms: u64,
+    worker_map: HashMap<String, String>,
+    pending_requests: HashMap<u64, Sender<DeviceResponseData>>,
 }
 
 impl DeviceManager {
     pub fn new(config: Config) -> Self {
+        let mut worker_map = HashMap::new();
+        for device in &config.devices {
+            worker_map.insert(device.id.clone(), format!("modbus_worker_{}", device.id));
+        }
         Self {
             config,
+            worker_map,
             pending_requests: HashMap::new(),
-            request_timeout_ms: 5000, // 5 second timeout
         }
     }
 
-    fn next_correlation_id() -> u64 {
-        CORRELATION_ID.fetch_add(1, Ordering::SeqCst)
+    pub fn get_worker_name(&self, device_id: &str) -> Option<&String> {
+        self.worker_map.get(device_id)
     }
 
-    fn cleanup_expired_requests(&mut self, now_ms: u64) {
-        self.pending_requests
-            .retain(|_, req| now_ms.saturating_sub(req.timestamp_ms) < self.request_timeout_ms);
-    }
     fn register_devices(&self, context: &Context<Message, Variables>) {
         let mut states = context.variables().device_states.write();
         for device in &self.config.devices {
@@ -70,25 +54,6 @@ impl DeviceManager {
             tracing::info!("Registered device: {}", device.id);
         }
     }
-
-    fn update_device_status(&self, context: &Context<Message, Variables>, device_id: &str, connected: bool) {
-        let mut states = context.variables().device_states.write();
-        if let Some(status) = states.get_mut(device_id) {
-            status.connected = connected;
-            if connected {
-                status.last_communication = time::Instant::now();
-                status.error_count = 0;
-            }
-        }
-    }
-
-    fn record_error(&self, context: &Context<Message, Variables>, device_id: &str) {
-        let mut states = context.variables().device_states.write();
-        if let Some(status) = states.get_mut(device_id) {
-            status.error_count += 1;
-        }
-    }
-
 }
 
 impl Worker<Message, Variables> for DeviceManager {
@@ -103,49 +68,82 @@ impl Worker<Message, Variables> for DeviceManager {
             self.config.devices.len()
         );
 
-        // Register devices on startup
         self.register_devices(context);
 
-
         for msg in client {
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
-
-
-            if now_ms % 1000 == 0 {
-                self.cleanup_expired_requests(now_ms);
-            }
-
             match msg {
                 Message::DeviceControl {
                     device_id,
                     operation,
                     params,
+                    correlation_id,
                 } => {
-                    // TODO: Forward to appropriate Modbus worker
-
                     tracing::debug!(
                         device_id = %device_id,
                         operation = ?operation,
                         "Received DeviceControl request"
                     );
+
+                    // Forward to the appropriate ModbusWorker
+                    match self.get_worker_name(&device_id) {
+                        Some(worker_name) => {
+                            tracing::trace!(
+                                device_id = %device_id,
+                                worker_name = %worker_name,
+                                "Forwarding DeviceControl to worker"
+                            );
+                            context.hub().send(Message::DeviceControl {
+                                device_id,
+                                operation,
+                                params,
+                                correlation_id,
+                            });
+                        }
+                        None => {
+                            tracing::error!(
+                                device_id = %device_id,
+                                "No worker found for device"
+                            );
+                        }
+                    }
                 }
                 Message::DeviceResponse {
                     device_id,
                     success,
                     data,
                     error,
+                    correlation_id,
                 } => {
-                    // TODO: Route response back to requester
                     tracing::debug!(
                         device_id = %device_id,
                         success = success,
                         "Received DeviceResponse"
                     );
+
+                    // Route response to the original requester via correlation_id
+                    if let Some(sender) = self.pending_requests.remove(&correlation_id) {
+                        let response_data = DeviceResponseData {
+                            success,
+                            data,
+                            error,
+                        };
+                        if let Err(e) = sender.send(response_data) {
+                            tracing::warn!(
+                                correlation_id = correlation_id,
+                                error = %e,
+                                "Failed to send response to requester"
+                            );
+                        }
+                    } else {
+                        tracing::warn!(
+                            correlation_id = correlation_id,
+                            "No pending request found for correlation_id"
+                        );
+                    }
                 }
-                _ => {}
+                Message::DeviceHeartbeat { .. } => {}
+                Message::ConfigUpdate { .. } => {}
+                Message::SystemStatus { .. } => {}
             }
         }
 

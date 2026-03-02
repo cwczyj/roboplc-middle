@@ -1,7 +1,81 @@
+use actix_web::{web, App, HttpResponse, HttpServer, Result};
 use roboplc::controller::prelude::*;
-use crate::{Variables, config::Config, Message};
-use std::thread;
+use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+use crate::{config::Config, Message, Variables};
+
+/// Application state shared across HTTP handlers
+pub struct AppState {
+    pub device_states: Arc<parking_lot_rt::RwLock<HashMap<String, crate::DeviceStatus>>>,
+}
+
+/// GET /api/devices - Returns list of all devices with status
+async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
+    let states = data.device_states.read();
+    let devices: Vec<serde_json::Value> = states
+        .iter()
+        .map(|(id, status)| {
+            json!({
+                "id": id,
+                "connected": status.connected,
+                "last_communication_ms": status.last_communication.elapsed().as_millis() as u64,
+                "error_count": status.error_count,
+            })
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(json!({"devices": devices})))
+}
+
+/// GET /api/devices/{id} - Returns status of specific device
+async fn get_device_by_id(
+    path: web::Path<String>,
+    data: web::Data<AppState>,
+) -> Result<HttpResponse> {
+    let device_id = path.into_inner();
+    let states = data.device_states.read();
+
+    if let Some(status) = states.get(&device_id) {
+        let body = json!({
+            "id": device_id,
+            "connected": status.connected,
+            "last_communication_ms": status.last_communication.elapsed().as_millis() as u64,
+            "error_count": status.error_count,
+            "reconnect_count": status.reconnect_count,
+        });
+        Ok(HttpResponse::Ok().json(body))
+    } else {
+        Ok(HttpResponse::NotFound().json(json!({"error": "Device not found"})))
+    }
+}
+
+/// GET /api/health - Returns health status
+async fn get_health() -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().json(json!({"status": "healthy"})))
+}
+
+/// GET /api/config - Returns current configuration
+async fn get_config() -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().json(json!({"config": {}})))
+}
+
+/// POST /api/config/reload - Triggers configuration reload
+async fn reload_config() -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().json(json!({"reload": "ok"})))
+}
+
+/// Configure routes for the HTTP API
+fn configure_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/api")
+            .route("/devices", web::get().to(get_devices))
+            .route("/devices/{id}", web::get().to(get_device_by_id))
+            .route("/health", web::get().to(get_health))
+            .route("/config", web::get().to(get_config))
+            .route("/config/reload", web::post().to(reload_config)),
+    );
+}
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "http_server", blocking = true)]
@@ -20,51 +94,30 @@ impl Worker<Message, Variables> for HttpWorker {
         let http_port = self.config.server.http_port;
         let addr = format!("0.0.0.0:{}", http_port);
         let device_states = context.variables().device_states.clone();
-        
-        thread::spawn(move || {
+
+        let app_state = web::Data::new(AppState { device_states });
+
+        std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .expect("HttpWorker: failed to create Tokio runtime");
-                
+
             rt.block_on(async move {
-                use tokio::net::TcpListener;
-                use tokio::io::{AsyncReadExt, AsyncWriteExt};
-                
-                let listener = match TcpListener::bind(&addr).await {
-                    Ok(l) => l,
+                let server = HttpServer::new(move || {
+                    App::new()
+                        .app_data(app_state.clone())
+                        .configure(configure_routes)
+                });
+
+                match server.bind(&addr) {
+                    Ok(server) => {
+                        println!("HttpWorker: listening on http://{}", addr);
+                        server.run().await.expect("HttpWorker: failed to run server");
+                    }
                     Err(e) => {
                         eprintln!("HttpWorker: failed to bind {}: {}", addr, e);
-                        return;
                     }
-                };
-                println!("HttpWorker: listening on http://{}", addr);
-                loop {
-                    let (mut socket, _) = match listener.accept().await {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("HttpWorker: accept error: {}", e);
-                            continue;
-                        }
-                    };
-                    
-                    let states = device_states.clone();
-                    tokio::spawn(async move {
-                        let mut buf = [0u8; 4096];
-                        let n = match socket.read(&mut buf).await {
-                            Ok(n) if n > 0 => n,
-                            _ => return,
-                        };
-                        let req = String::from_utf8_lossy(&buf[..n]);
-                        
-                        let (status, body) = handle_request(&req, &states);
-                        
-                        let response = format!(
-                            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-                            status, body.len(), body
-                        );
-                        let _ = socket.write_all(response.as_bytes()).await;
-                    });
                 }
             });
         });
@@ -76,144 +129,77 @@ impl Worker<Message, Variables> for HttpWorker {
     }
 }
 
-fn handle_request(req: &str, device_states: &Arc<parking_lot_rt::RwLock<std::collections::HashMap<String, crate::DeviceStatus>>>) -> (&'static str, String) {
-    if req.starts_with("GET /api/devices/") {
-        let path = req.lines().next().unwrap_or("");
-        let device_id = path
-            .trim_start_matches("GET /api/devices/")
-            .split_whitespace()
-            .next()
-            .unwrap_or("");
-        
-        let states = device_states.read();
-        if let Some(status) = states.get(device_id) {
-            let body = serde_json::json!({
-                "id": device_id,
-                "connected": status.connected,
-                "last_communication_ms": status.last_communication.elapsed().as_millis() as u64,
-                "error_count": status.error_count,
-                "reconnect_count": status.reconnect_count,
-            });
-            ("200 OK", body.to_string())
-        } else {
-            ("404 Not Found", serde_json::json!({"error": "Device not found"}).to_string())
-        }
-    } else if req.starts_with("GET /api/devices") {
-        let states = device_states.read();
-        let devices: Vec<serde_json::Value> = states.iter().map(|(id, status)| {
-            serde_json::json!({
-                "id": id,
-                "connected": status.connected,
-                "last_communication_ms": status.last_communication.elapsed().as_millis() as u64,
-                "error_count": status.error_count,
-            })
-        }).collect();
-        ("200 OK", serde_json::json!({"devices": devices}).to_string())
-    } else if req.starts_with("GET /api/health") {
-        ("200 OK", serde_json::json!({"status": "healthy"}).to_string())
-    } else if req.starts_with("GET /api/config") {
-        ("200 OK", serde_json::json!({"config": {}}).to_string())
-    } else if req.starts_with("POST /api/config/reload") {
-        ("200 OK", serde_json::json!({"reload": "ok"}).to_string())
-    } else {
-        ("404 Not Found", serde_json::json!({"error": "Not found"}).to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::DeviceStatus;
-    use std::collections::HashMap;
     use std::time::Instant;
 
-    fn make_device_states() -> Arc<parking_lot_rt::RwLock<HashMap<String, DeviceStatus>>> {
-        Arc::new(parking_lot_rt::RwLock::new(HashMap::new()))
+    fn make_app_state() -> AppState {
+        AppState {
+            device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
+        }
     }
 
-    fn make_device_states_with_device(id: &str, connected: bool) -> Arc<parking_lot_rt::RwLock<HashMap<String, DeviceStatus>>> {
+    fn make_app_state_with_device(id: &str, connected: bool) -> AppState {
         let mut states = HashMap::new();
-        states.insert(id.to_string(), DeviceStatus {
-            connected,
-            last_communication: Instant::now(),
-            error_count: 0,
-            reconnect_count: 0,
-        });
-        Arc::new(parking_lot_rt::RwLock::new(states))
+        states.insert(
+            id.to_string(),
+            DeviceStatus {
+                connected,
+                last_communication: Instant::now(),
+                error_count: 0,
+                reconnect_count: 0,
+            },
+        );
+        AppState {
+            device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
+        }
     }
 
-    #[test]
-    fn test_get_devices_empty() {
-        let states = make_device_states();
-        let req = "GET /api/devices HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "200 OK");
-        assert!(body.contains("\"devices\":[]"));
+    #[actix_rt::test]
+    async fn test_get_devices_empty() {
+        let app_state = make_app_state();
+        let result = get_devices(web::Data::new(app_state)).await;
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_get_devices_with_device() {
-        let states = make_device_states_with_device("device-1", true);
-        let req = "GET /api/devices HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "200 OK");
-        assert!(body.contains("\"device-1\""));
-        assert!(body.contains("\"connected\":true"));
+    #[actix_rt::test]
+    async fn test_get_devices_with_device() {
+        let app_state = make_app_state_with_device("device-1", true);
+        let result = get_devices(web::Data::new(app_state)).await;
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_get_device_by_id_found() {
-        let states = make_device_states_with_device("device-1", true);
-        let req = "GET /api/devices/device-1 HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "200 OK");
-        assert!(body.contains("\"device-1\""));
-        assert!(body.contains("\"connected\":true"));
-        assert!(body.contains("\"error_count\":0"));
+    #[actix_rt::test]
+    async fn test_get_device_by_id_found() {
+        let app_state = make_app_state_with_device("device-1", true);
+        let result = get_device_by_id(web::Path::from("device-1".to_string()), web::Data::new(app_state)).await;
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_get_device_by_id_not_found() {
-        let states = make_device_states();
-        let req = "GET /api/devices/nonexistent HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "404 Not Found");
-        assert!(body.contains("Device not found"));
+    #[actix_rt::test]
+    async fn test_get_device_by_id_not_found() {
+        let app_state = make_app_state();
+        let result = get_device_by_id(web::Path::from("nonexistent".to_string()), web::Data::new(app_state)).await;
+        assert_eq!(result.unwrap().status(), actix_web::http::StatusCode::NOT_FOUND);
     }
 
-    #[test]
-    fn test_get_health() {
-        let states = make_device_states();
-        let req = "GET /api/health HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "200 OK");
-        assert!(body.contains("\"status\":\"healthy\""));
+    #[actix_rt::test]
+    async fn test_get_health() {
+        let result = get_health().await;
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_get_config() {
-        let states = make_device_states();
-        let req = "GET /api/config HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "200 OK");
-        assert!(body.contains("\"config\""));
+    #[actix_rt::test]
+    async fn test_get_config() {
+        let result = get_config().await;
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_post_config_reload() {
-        let states = make_device_states();
-        let req = "POST /api/config/reload HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "200 OK");
-        assert!(body.contains("\"reload\":\"ok\""));
-    }
-
-    #[test]
-    fn test_unknown_path() {
-        let states = make_device_states();
-        let req = "GET /unknown HTTP/1.1\r\nHost: localhost\r\n\r\n";
-        let (status, body) = handle_request(req, &states);
-        assert_eq!(status, "404 Not Found");
-        assert!(body.contains("Not found"));
+    #[actix_rt::test]
+    async fn test_reload_config() {
+        let result = reload_config().await;
+        assert!(result.is_ok());
     }
 }

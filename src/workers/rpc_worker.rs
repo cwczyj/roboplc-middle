@@ -1,12 +1,22 @@
+use crate::config::Config;
+use crate::messages::Message;
+use crate::messages::Operation;
+use crate::Variables;
 use roboplc::controller::prelude::*;
 use roboplc_rpc::{dataformat::Json, server::RpcServer, server::RpcServerHandler, RpcResult};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{channel, Sender};
 
-use crate::config::Config;
-use crate::messages::Message;
-use crate::Variables;
+static CORRELATION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn next_correlation_id() -> u64 {
+    CORRELATION_COUNTER.fetch_add(1, Ordering::SeqCst)
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(
@@ -70,30 +80,28 @@ enum RpcResultType {
     },
 }
 
-// RpcHandler handles RPC requests from clients.
-//
-// TODO: Hub integration requirement
-// Currently, RpcHandler cannot send DeviceControl messages via Hub because it doesn't have
-// access to context.hub(). To enable full Hub integration:
-//
-// Option A: Channel-based architecture
-// - Create channels between RpcWorker and RpcHandler
-// - RpcWorker owns the Hub client and sends/receives messages
-// - RpcHandler sends requests via channel, receives responses via channel
-// - RpcWorker processes incoming DeviceResponse and correlates with pending requests
-//
-// Option B: Store Hub client reference (not possible with current trait)
-// - Would require modifying RpcServerHandler trait to accept context
-//
-// For now, stub implementations return hardcoded responses.
-// Full implementation will require architectural changes to pass Hub context to handler.
+pub type ResponseSender = Sender<(bool, JsonValue, Option<String>)>;
+
+#[derive(Clone)]
+pub struct DeviceControlRequest {
+    pub device_id: String,
+    pub operation: Operation,
+    pub params: JsonValue,
+    pub correlation_id: u64,
+    pub respond_to: ResponseSender,
+}
+
 struct RpcHandler {
     device_ids: Vec<String>,
+    device_control_tx: Sender<DeviceControlRequest>,
 }
 
 impl RpcHandler {
-    pub fn new(device_ids: Vec<String>) -> Self {
-        Self { device_ids }
+    pub fn new(device_ids: Vec<String>, device_control_tx: Sender<DeviceControlRequest>) -> Self {
+        Self {
+            device_ids,
+            device_control_tx,
+        }
     }
 }
 
@@ -115,36 +123,84 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
             RpcMethod::GetDeviceList {} => Ok(RpcResultType::DeviceList {
                 devices: self.device_ids.clone(),
             }),
-            RpcMethod::GetStatus { device_id: _ } => Ok(RpcResultType::Status {
-                connected: false,
-                last_communication_ms: 0,
-                error_count: 0,
-            }),
+            RpcMethod::GetStatus { device_id } => {
+                self.send_device_control(device_id, Operation::GetStatus, serde_json::json!({}))
+            }
             RpcMethod::SetRegister {
-                device_id: _,
-                address: _,
-                value: _,
-            } => Ok(RpcResultType::Success { success: true }),
-            RpcMethod::GetRegister {
-                device_id: _,
-                address: _,
-            } => Ok(RpcResultType::Data {
-                data: serde_json::json!({ "value": 0 }),
-            }),
+                device_id,
+                address,
+                value,
+            } => {
+                let params = serde_json::json!({ "address": address, "value": value });
+                self.send_device_control(device_id, Operation::SetRegister, params)
+            }
+            RpcMethod::GetRegister { device_id, address } => {
+                let params = serde_json::json!({ "address": address });
+                self.send_device_control(device_id, Operation::GetRegister, params)
+            }
             RpcMethod::MoveTo {
-                device_id: _,
-                position: _,
-            } => Ok(RpcResultType::Success { success: true }),
+                device_id,
+                position,
+            } => {
+                let params = serde_json::json!({ "position": position });
+                self.send_device_control(device_id, Operation::MoveTo, params)
+            }
             RpcMethod::ReadBatch {
-                device_id: _,
-                addresses: _,
-            } => Ok(RpcResultType::Data {
-                data: serde_json::json!({}),
-            }),
-            RpcMethod::WriteBatch {
-                device_id: _,
-                values: _,
-            } => Ok(RpcResultType::Success { success: true }),
+                device_id,
+                addresses,
+            } => {
+                let params = serde_json::json!({ "addresses": addresses });
+                self.send_device_control(device_id, Operation::ReadBatch, params)
+            }
+            RpcMethod::WriteBatch { device_id, values } => {
+                let params = serde_json::json!({ "values": values });
+                self.send_device_control(device_id, Operation::WriteBatch, params)
+            }
+        }
+    }
+}
+
+impl RpcHandler {
+    fn send_device_control(
+        &self,
+        device_id: &str,
+        operation: Operation,
+        params: JsonValue,
+    ) -> RpcResult<RpcResultType> {
+        let correlation_id = next_correlation_id();
+        let (response_tx, response_rx) = channel();
+
+        let request = DeviceControlRequest {
+            device_id: device_id.to_string(),
+            operation,
+            params,
+            correlation_id,
+            respond_to: response_tx,
+        };
+
+        if let Err(error) = self.device_control_tx.send(request) {
+            tracing::error!(%error, "failed to send DeviceControl request");
+            return Ok(RpcResultType::Error {
+                error: format!("Internal error: {}", error),
+            });
+        }
+
+        match response_rx.recv() {
+            Ok((success, data, error)) => {
+                if success {
+                    Ok(RpcResultType::Data { data })
+                } else {
+                    Ok(RpcResultType::Error {
+                        error: error.unwrap_or_else(|| "Unknown error".to_string()),
+                    })
+                }
+            }
+            Err(error) => {
+                tracing::error!(%error, "failed to receive DeviceResponse");
+                Ok(RpcResultType::Error {
+                    error: format!("Response error: {}", error),
+                })
+            }
         }
     }
 }
@@ -166,9 +222,11 @@ impl Worker<Message, Variables> for RpcWorker {
         let port = self.config.server.rpc_port;
         let bind_addr = format!("0.0.0.0:{}", port);
 
-        // Collect device IDs from config
         let device_ids: Vec<String> = self.config.devices.iter().map(|d| d.id.clone()).collect();
-        let handler = RpcHandler::new(device_ids);
+
+        let (device_control_tx, device_control_rx) = channel::<DeviceControlRequest>();
+
+        let handler = RpcHandler::new(device_ids, device_control_tx);
         let server = RpcServer::new(handler);
 
         let listener = match std::net::TcpListener::bind(&bind_addr) {
@@ -188,6 +246,8 @@ impl Worker<Message, Variables> for RpcWorker {
         }
 
         tracing::info!("RPC Server Worker started on {}", bind_addr);
+
+        let mut pending_requests: HashMap<u64, ResponseSender> = HashMap::new();
 
         while context.is_online() {
             match listener.accept() {
@@ -232,6 +292,18 @@ impl Worker<Message, Variables> for RpcWorker {
                     }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    while let Ok(request) = device_control_rx.try_recv() {
+                        pending_requests.insert(request.correlation_id, request.respond_to);
+
+                        let message = Message::DeviceControl {
+                            device_id: request.device_id,
+                            operation: request.operation,
+                            params: request.params,
+                            correlation_id: request.correlation_id,
+                        };
+                        context.hub().send(message);
+                    }
+
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
                 Err(error) => {
@@ -243,5 +315,36 @@ impl Worker<Message, Variables> for RpcWorker {
 
         tracing::info!("RPC Server Worker stopped");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn correlation_id_increments() {
+        let id1 = next_correlation_id();
+        let id2 = next_correlation_id();
+        assert!(id2 > id1, "correlation IDs should increment");
+    }
+
+    #[test]
+    fn device_control_request_can_be_sent() {
+        let (tx, rx) = channel::<DeviceControlRequest>();
+        let (response_tx, _response_rx) = channel();
+
+        let request = DeviceControlRequest {
+            device_id: "test-device".to_string(),
+            operation: Operation::GetRegister,
+            params: serde_json::json!({ "address": "h100" }),
+            correlation_id: 1,
+            respond_to: response_tx,
+        };
+
+        tx.send(request.clone()).unwrap();
+        let received = rx.try_recv().unwrap();
+        assert_eq!(received.device_id, "test-device");
+        assert_eq!(received.correlation_id, 1);
     }
 }
