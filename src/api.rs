@@ -152,6 +152,7 @@ pub async fn set_register(
             "value": request.value,
         }),
         correlation_id: next_correlation_id(),
+        respond_to: None,
     };
 
     // Send via Hub if available
@@ -223,6 +224,7 @@ pub async fn batch_operations(
             "write": request.write,
         }),
         correlation_id: next_correlation_id(),
+        respond_to: None,
     };
 
     // Send via Hub if available
@@ -273,6 +275,7 @@ pub async fn move_to(
             "speed": request.speed.unwrap_or(100),
         }),
         correlation_id: next_correlation_id(),
+        respond_to: None,
     };
 
     // Send via Hub if available

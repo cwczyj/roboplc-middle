@@ -70,6 +70,10 @@ pub enum Message {
         // correlation_id 字段，类型是 u64（无符号 64 位整数）
         // 用于关联请求和响应，确保响应能匹配到正确的请求
         correlation_id: u64,
+        // respond_to 字段，类型是 Option<Sender<DeviceResponseData>>
+        // 用于直接响应机制：请求者提供通道，响应者通过该通道返回结果
+        // None 表示发送后不管（fire-and-forget）模式
+        respond_to: Option<Sender<DeviceResponseData>>,
     },
     // DeviceResponse 变体，没有 #[data_delivery] 属性
     // 默认情况下，消息会按照 Hub 的路由规则传递
@@ -113,6 +117,11 @@ pub enum Message {
         // 新配置的字符串表示（通常是序列化后的配置）
         // 使用 String 而不是结构体提供了灵活性
         config: String,
+    },
+    // TimeoutCleanup: sent via direct channel from RpcWorker to DeviceManager
+    // when a request times out, allowing cleanup of pending_requests HashMap
+    TimeoutCleanup {
+        correlation_id: u64,
     },
     // SystemStatus 变体，用于查询系统状态
     SystemStatus {
@@ -170,3 +179,8 @@ pub struct SystemStatusResponse {
     // 表示系统已经运行的秒数（运行时间）
     pub uptime_secs: u64,
 }
+
+
+// Response data for device control operations.
+// Using tuple type for compatibility with rpc_worker's ResponseSender
+pub type DeviceResponseData = (bool, JsonValue, Option<String>);

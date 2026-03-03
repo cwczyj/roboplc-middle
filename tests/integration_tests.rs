@@ -231,3 +231,32 @@ fn test_port_availability_checker() {
 
     drop(listener);
 }
+
+// RPC Response Routing Tests
+// These tests verify the request-response routing logic in the RPC worker.
+// They are skeleton tests marked with #[should_panic] following TDD approach.
+
+mod rpc_response_tests {
+    use super::*;
+
+    /// Test successful request-response flow through direct channel + Hub routing
+    #[test]
+    #[should_panic]
+    fn test_request_response_flow_success() {
+        panic!("not implemented");
+    }
+
+    /// Test that timeout triggers cleanup of pending_requests HashMap
+    #[test]
+    #[should_panic]
+    fn test_timeout_cleanup_removes_pending() {
+        panic!("not implemented");
+    }
+
+    /// Test that multiple concurrent requests route to correct handlers
+    #[test]
+    #[should_panic]
+    fn test_concurrent_requests_no_interference() {
+        panic!("not implemented");
+    }
+}

@@ -897,6 +897,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                 operation,
                 params,
                 correlation_id,
+                respond_to: _,
             } = msg
             {
                 // Verify this message is for our device

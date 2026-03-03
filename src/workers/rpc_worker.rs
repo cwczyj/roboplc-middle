@@ -28,6 +28,7 @@ use crate::Variables;
 //   在RoboPLC中，Variables是线程安全的共享存储
 
 use roboplc::controller::prelude::*;
+use roboplc::prelude::Hub;
 //   roboplc: 外部crate，提供实时PLC控制功能
 //   controller: roboplc的子模块，包含Worker、Context等核心trait
 //   prelude: 预导入模块，通常包含最常用的类型
@@ -50,7 +51,6 @@ use serde_json::Value as JsonValue;
 //   Value: 表示任意JSON值的枚举（可以是对象、数组、字符串、数字等）
 //   as JsonValue: 类型别名，简化后续代码中的书写
 
-use std::collections::HashMap;
 //   std: Rust标准库
 //   collections: 集合模块，包含各种数据结构
 //   HashMap: 哈希映射（键值对存储），类似Python的dict或Java的HashMap
@@ -265,19 +265,21 @@ struct RpcHandler {
     device_control_tx: Sender<DeviceControlRequest>,
     //   向设备管理器发送控制请求的通道发送者
     //   使用通道实现线程间通信（mpsc模式）
+    hub: Hub<Message>,
 }
 
 impl RpcHandler {
     // ^ impl: 为类型实现方法
     //   这里为RpcHandler实现关联函数（构造函数）
 
-    pub fn new(device_ids: Vec<String>, device_control_tx: Sender<DeviceControlRequest>) -> Self {
+    pub fn new(device_ids: Vec<String>, device_control_tx: Sender<DeviceControlRequest>, hub: Hub<Message>) -> Self {
         // ^ -> Self: 返回Self类型（即RpcHandler）
         Self {
             // ^ Self: 指代当前实现类型（RpcHandler）
             device_ids,
             //   字段初始化简写，等价于 device_ids: device_ids
             device_control_tx,
+            hub,
         }
     }
 }
@@ -426,8 +428,10 @@ impl RpcHandler {
             });
         }
 
-        match response_rx.recv() {
-            //   recv(): 阻塞等待接收响应
+        use std::sync::mpsc::RecvTimeoutError;
+
+        match response_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            //   recv_timeout(): 带超时等待接收响应
             Ok((success, data, error)) => {
                 // ^ 成功接收到响应
                 if success {
@@ -440,11 +444,20 @@ impl RpcHandler {
                     })
                 }
             }
-            Err(error) => {
-                //   接收失败（发送端被丢弃）
-                tracing::error!(%error, "failed to receive DeviceResponse");
+            Err(RecvTimeoutError::Timeout) => {
+                //   超时处理
+                tracing::warn!(correlation_id, "Request timed out, sending cleanup");
+                // Send TimeoutCleanup to DeviceManager
+                self.hub.send(Message::TimeoutCleanup { correlation_id });
                 Ok(RpcResultType::Error {
-                    error: format!("Response error: {}", error),
+                    error: "Request timed out".to_string(),
+                })
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                //   接收失败（发送端被丢弃）
+                tracing::error!("Response channel disconnected");
+                Ok(RpcResultType::Error {
+                    error: "Response channel disconnected".to_string(),
                 })
             }
         }
@@ -507,7 +520,7 @@ impl Worker<Message, Variables> for RpcWorker {
         let (device_control_tx, device_control_rx) = channel::<DeviceControlRequest>();
         // ^ ::<DeviceControlRequest>: 显式指定通道传输的类型（turbofish语法）
 
-        let handler = RpcHandler::new(device_ids, device_control_tx);
+        let handler = RpcHandler::new(device_ids, device_control_tx, context.hub().clone());
         //   创建RPC处理器实例
         let server = RpcServer::new(handler);
         //   使用处理器创建RPC服务器
@@ -538,8 +551,6 @@ impl Worker<Message, Variables> for RpcWorker {
 
         tracing::info!("RPC Server Worker started on {}", bind_addr);
 
-        let mut pending_requests: HashMap<u64, ResponseSender> = HashMap::new();
-        //   存储待处理的请求，键是correlation_id，值是响应发送者
 
         while context.is_online() {
             // ^ while: 循环，只要Worker在线就一直运行
@@ -617,14 +628,14 @@ impl Worker<Message, Variables> for RpcWorker {
                     while let Ok(request) = device_control_rx.try_recv() {
                         // ^ try_recv(): 非阻塞接收
                         //   处理所有待处理的消息
-                        pending_requests.insert(request.correlation_id, request.respond_to);
-                        //   保存关联ID和响应发送者，等待设备管理器响应
+                        let respond_to = request.respond_to.clone();
 
                         let message = Message::DeviceControl {
                             device_id: request.device_id,
                             operation: request.operation,
                             params: request.params,
                             correlation_id: request.correlation_id,
+                            respond_to: Some(respond_to),
                         };
                         context.hub().send(message);
                         //   通过Hub发送消息给设备管理器

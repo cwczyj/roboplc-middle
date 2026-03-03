@@ -16,7 +16,7 @@ use crate::config::Config;
 // 从crate根导入Message和Variables类型
 // Message是枚举类型，表示worker之间传递的各种消息
 // Variables是共享状态结构体
-use crate::{Message, Variables};
+use crate::{Message, Variables, DeviceResponseData};
 // roboplc是实时PLC框架，controller模块包含Worker相关的基础trait和宏
 // prelude模块通常包含最常用的类型，使用*通配符导入所有公开项
 use roboplc::controller::prelude::*;
@@ -34,32 +34,6 @@ use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 // time模块包含时间相关的类型，如Instant（时间点）、Duration（时间间隔）
 use std::time;
-
-/// 三斜杠是文档注释，会被rustdoc工具提取生成文档
-/// 这个结构体用于封装设备响应数据，通过通道发送回请求者
-/// Response data sent back to requesters via channel
-// derive宏自动为结构体实现指定的trait
-// Clone: 允许通过.clone()方法创建结构体的副本
-// Debug: 允许使用{:?}格式化输出结构体内容，便于调试
-// Serialize: 允许将结构体序列化为JSON等格式
-// Deserialize: 允许从JSON等格式反序列化为结构体
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DeviceResponseData {
-    // pub是可见性修饰符，表示公共访问权限
-    // 其他模块可以访问这个字段
-    // bool是布尔类型，只有true或false两个值
-    // 表示操作是否成功
-    pub success: bool,
-    // serde_json::Value是serde_json库提供的动态JSON值类型
-    // 可以表示任意合法的JSON值（对象、数组、字符串、数字等）
-    // 这里用于存储灵活的响应数据
-    pub data: serde_json::Value,
-    // Option<T>是Rust的标准枚举，表示可能存在也可能不存在的值
-    // Some(T)表示有值，None表示无值
-    // String是UTF-8编码的可变长字符串
-    // 这里用于存储错误信息，成功时为None
-    pub error: Option<String>,
-}
 
 // WorkerOpts是RoboPLC框架提供的派生宏
 // 用于为Worker结构体生成配置选项相关的代码
@@ -218,7 +192,13 @@ impl Worker<Message, Variables> for DeviceManager {
                     operation,      // 操作类型
                     params,         // 操作参数
                     correlation_id, // 关联ID，用于匹配请求和响应
+                    respond_to,
                 } => {
+                    // Store respond_to in pending_requests if present
+                    if let Some(sender) = respond_to {
+                        self.pending_requests.insert(correlation_id, sender);
+                    }
+
                     // tracing::debug!记录调试级别日志
                     // %表示使用Display trait格式化
                     // ?表示使用Debug trait格式化
@@ -249,6 +229,7 @@ impl Worker<Message, Variables> for DeviceManager {
                                 operation,
                                 params,
                                 correlation_id,
+                                respond_to: None,
                             });
                         }
                         // None表示没有找到对应的worker
@@ -280,12 +261,8 @@ impl Worker<Message, Variables> for DeviceManager {
                     // &correlation_id表示借用correlation_id作为查找键
                     // 返回Option<Sender<DeviceResponseData>>
                     if let Some(sender) = self.pending_requests.remove(&correlation_id) {
-                        // 创建响应数据结构体
-                        let response_data = DeviceResponseData {
-                            success,
-                            data,
-                            error,
-                        };
+                        // 创建响应数据元组
+                        let response_data = (success, data, error);
                         // sender.send()通过通道发送响应
                         // 返回Result<(), SendError<T>>
                         // if let Err(e)匹配发送失败的情况
@@ -316,6 +293,13 @@ impl Worker<Message, Variables> for DeviceManager {
                 // 匹配SystemStatus消息但忽略内容
                 // 设备管理器不处理系统状态消息
                 Message::SystemStatus { .. } => {}
+                // 匹配TimeoutCleanup消息，清理超时的请求
+                // 当RpcWorker检测到超时时，发送此消息给DeviceManager清理pending_requests中的条目
+                Message::TimeoutCleanup { correlation_id } => {
+                    if let Some(_) = self.pending_requests.remove(&correlation_id) {
+                        tracing::debug!(correlation_id, "Cleaned up timed-out request from pending_requests");
+                    }
+                }
             }
         }
 

@@ -55,7 +55,7 @@ pub mod workers;    // Worker 实现模块
 // ========== 公共接口导出 ==========
 // pub use 将内部模块的公共类型重新导出到 crate 根级别
 // 这样外部代码可以直接使用 `roboplc_middleware::Message` 而不是 `roboplc_middleware::messages::Message`
-pub use messages::{Message, Operation, SystemStatusResponse};
+pub use messages::{Message, Operation, SystemStatusResponse, DeviceResponseData};
 
 // ========== 外部依赖导入 ==========
 // use 语句用于导入外部 crate 和标准库的类型到当前作用域

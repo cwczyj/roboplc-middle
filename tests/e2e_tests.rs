@@ -509,6 +509,7 @@ fn test_rpc_to_modbus_roundtrip() {
         operation: Operation::GetRegister,
         params: json!({ "address": "h100" }),
         correlation_id: test_correlation_id,
+        respond_to: None,
     };
 
     // Verify DeviceControl message content
@@ -517,6 +518,7 @@ fn test_rpc_to_modbus_roundtrip() {
         operation,
         params,
         correlation_id,
+        respond_to: _,
     } = control_message
     {
         assert_eq!(device_id, "test-plc");
@@ -581,6 +583,7 @@ fn test_error_response_preserves_correlation_id() {
         operation: Operation::GetRegister,
         params: json!({ "address": "h100" }),
         correlation_id,
+        respond_to: None,
     };
 
     // Extract correlation_id and create error response

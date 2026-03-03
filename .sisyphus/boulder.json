@@ -1,9 +1,9 @@
 {
-  "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/roboplc-feature-implementation.md",
-  "started_at": "2026-03-02T06:58:34.791Z",
+  "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/rpc-deadlock-fix.md",
+  "started_at": "2026-03-03T00:51:45.771Z",
   "session_ids": [
-    "ses_35c882d65ffen7CQXJ3rus54jS"
+    "ses_351988e31ffeqAm16Eqiii2Pfq"
   ],
-  "plan_name": "roboplc-feature-implementation",
+  "plan_name": "rpc-deadlock-fix",
   "agent": "atlas"
 }
