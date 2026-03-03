@@ -274,9 +274,10 @@ data_type = "u16"
 fn test_rpc_creates_device_control_message() {
     use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
     use std::sync::mpsc::channel;
+    use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, _response_rx) = channel();
+    let (response_tx, _response_rx) = oneshot::channel();
 
     let correlation_id = 12345u64;
     let request = DeviceControlRequest {
@@ -307,9 +308,10 @@ fn test_rpc_creates_device_control_message() {
 fn test_device_control_set_register_message() {
     use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
     use std::sync::mpsc::channel;
+    use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, _response_rx) = channel();
+    let (response_tx, _response_rx) = oneshot::channel();
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
@@ -338,9 +340,10 @@ fn test_device_control_set_register_message() {
 fn test_device_control_read_batch_message() {
     use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
     use std::sync::mpsc::channel;
+    use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, _response_rx) = channel();
+    let (response_tx, _response_rx) = oneshot::channel();
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
@@ -371,9 +374,10 @@ fn test_device_control_read_batch_message() {
 fn test_device_control_write_batch_message() {
     use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
     use std::sync::mpsc::channel;
+    use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, _response_rx) = channel();
+    let (response_tx, _response_rx) = oneshot::channel();
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
@@ -404,9 +408,10 @@ fn test_device_control_write_batch_message() {
 fn test_response_sender_receives_response() {
     use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
     use std::sync::mpsc::channel;
+    use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, response_rx) = channel::<(bool, serde_json::Value, Option<String>)>();
+    let (response_tx, response_rx) = oneshot::channel::<(bool, serde_json::Value, Option<String>)>();
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
@@ -427,7 +432,7 @@ fn test_response_sender_receives_response() {
         .unwrap();
 
     // Verify response is received
-    let (success, data, error) = response_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    let (success, data, error) = response_rx.blocking_recv().unwrap();
     assert!(success);
     assert_eq!(data["values"][0], 42);
     assert!(error.is_none());
@@ -442,18 +447,20 @@ fn test_response_sender_receives_response() {
 fn test_correlation_id_uniqueness() {
     use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
     use std::sync::mpsc::channel;
+    use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, _response_rx) = channel();
 
     // Send multiple requests with different correlation IDs
+    // Each request needs its own oneshot channel (oneshot Sender is not clonable)
     for i in 0..5 {
+        let (response_tx, _response_rx) = oneshot::channel();
         let request = DeviceControlRequest {
             device_id: format!("device-{}", i),
             operation: Operation::GetRegister,
             params: json!({ "address": "h100" }),
             correlation_id: i as u64 * 1000,
-            respond_to: response_tx.clone(),
+            respond_to: response_tx,
         };
         tx.send(request).unwrap();
     }
