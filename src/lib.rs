@@ -46,10 +46,9 @@
 
 // ========== 模块声明 ==========
 // pub mod 声明公共子模块，使它们可以被外部 crate 使用
-pub mod api;        // HTTP API 模块
 pub mod config;     // 配置解析模块
 pub mod messages;   // 消息类型定义模块
-pub mod profiles;   // 设备配置文件模块
+
 pub mod workers;    // Worker 实现模块
 
 // ========== 公共接口导出 ==========

@@ -1,9 +1,9 @@
 {
-  "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/rpc-deadlock-fix.md",
-  "started_at": "2026-03-03T00:51:45.771Z",
+  "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/httpworker-api-fix.md",
+  "started_at": "2026-03-04T10:56:24.311Z",
   "session_ids": [
-    "ses_351988e31ffeqAm16Eqiii2Pfq"
+    "ses_347bc56f3ffeYwgezOxgbiT5tP"
   ],
-  "plan_name": "rpc-deadlock-fix",
+  "plan_name": "httpworker-api-fix",
   "agent": "atlas"
 }

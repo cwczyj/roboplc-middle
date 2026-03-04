@@ -47,6 +47,7 @@ pub struct AppState {
     /// `RwLock` = Read-Write Lock（读写锁）
     /// `HashMap<String, crate::DeviceStatus>` 是设备ID到设备状态的映射
     pub device_states: Arc<parking_lot_rt::RwLock<HashMap<String, crate::DeviceStatus>>>,
+    pub config: Arc<Config>,
 }
 
 /// `///` 是文档注释，会生成文档并显示在IDE中
@@ -96,7 +97,7 @@ async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
     Ok(HttpResponse::Ok().json(json!({"devices": devices})))
 }
 
-/// 这个函数处理 GET /api/devices/{id} 请求
+/// 这个函数处理 GET /api/devices/{id}/status 请求
 /// `path` 参数类型是 `web::Path<String>`，用于提取URL路径参数
 /// `{id}` 在路由中定义的参数会被提取为String
 async fn get_device_by_id(
@@ -134,20 +135,56 @@ async fn get_device_by_id(
 
 /// 这个函数处理 GET /api/health 请求
 /// 用于健康检查，监控系统是否正常运行
-async fn get_health() -> Result<HttpResponse> {
-    // 返回简单的健康状态JSON
-    Ok(HttpResponse::Ok().json(json!({"status": "healthy"})))
+/// 返回系统健康状态，包括设备连接统计
+async fn get_health(data: web::Data<AppState>) -> Result<HttpResponse> {
+    let states = data.device_states.read();
+    
+    let total = states.len();
+    let connected = states.values().filter(|s| s.connected).count();
+    let disconnected = total - connected;
+    
+    // 健康状态判定：
+    // - healthy: 所有设备连接
+    // - degraded: 部分设备断线
+    // - unhealthy: 所有设备断线或没有设备
+    let status = if total == 0 {
+        "unhealthy"
+    } else if connected == total {
+        "healthy"
+    } else if connected == 0 {
+        "unhealthy"
+    } else {
+        "degraded"
+    };
+    
+    Ok(HttpResponse::Ok().json(json!({
+        "status": status,
+        "devices": {
+            "total": total,
+            "connected": connected,
+            "disconnected": disconnected
+        }
+    })))
 }
 
 /// 这个函数处理 GET /api/config 请求
 /// 用于获取当前配置信息
-async fn get_config() -> Result<HttpResponse> {
-    // 目前返回空配置，可以扩展为返回实际配置
-    Ok(HttpResponse::Ok().json(json!({"config": {}})))
+async fn get_config(data: web::Data<AppState>) -> Result<HttpResponse> {
+    // 返回配置的 JSON 序列化
+    // Arc<Config> 可以直接解引用访问 Config
+    Ok(HttpResponse::Ok().json(json!({
+        "config": &*data.config
+    })))
 }
 
-/// 这个函数处理 POST /api/config/reload 请求
-/// POST请求用于修改资源，这里用于触发配置重载
+/// 配置重载端点
+///
+/// 注意：此端点仅返回成功响应，不会实际触发配置重载。
+///
+/// 实际的配置重载由 ConfigLoader 的文件监控机制触发：
+/// - ConfigLoader 持续监控 config.toml 文件的变化
+/// - 当文件被修改时，ConfigLoader 自动重新加载配置
+/// - 如需触发重载，请直接修改 config.toml 文件
 async fn reload_config() -> Result<HttpResponse> {
     // 返回重载成功的响应
     Ok(HttpResponse::Ok().json(json!({"reload": "ok"})))
@@ -166,7 +203,7 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
             // `.to(get_devices)` 指定处理函数
             .route("/devices", web::get().to(get_devices))
             // `{id}` 是路径参数，会被提取为String
-            .route("/devices/{id}", web::get().to(get_device_by_id))
+            .route("/devices/{id}/status", web::get().to(get_device_by_id))
             .route("/health", web::get().to(get_health))
             .route("/config", web::get().to(get_config))
             // `web::post()` 表示POST请求，用于创建或修改资源
@@ -219,10 +256,12 @@ impl Worker<Message, Variables> for HttpWorker {
         // `context.variables()` 获取共享变量
         // `.device_states.clone()` 克隆Arc（只克隆引用计数，不是数据本身）
         let device_states = context.variables().device_states.clone();
+        let config = Arc::new(self.config.clone());
 
-        // `web::Data::new()` 创建Actix-web的应用程序数据
-        // 将device_states包装在AppState中
-        let app_state = web::Data::new(AppState { device_states });
+        let app_state = web::Data::new(AppState { 
+            device_states,
+            config,
+        });
 
         // `std::thread::spawn()` 创建新线程
         // 使用`move`关键字将变量所有权转移到闭包中
@@ -296,16 +335,24 @@ mod tests {
     use super::*;
     // 导入DeviceStatus用于测试
     use crate::DeviceStatus;
+    // 导入配置相关类型
+    use crate::config::{Logging, Server};
     // `Instant` 用于时间点操作
     use std::time::Instant;
 
     /// `fn` 定义测试辅助函数，返回AppState
     fn make_app_state() -> AppState {
         AppState {
-            // `Arc::new()` 创建新的Arc
-            // `parking_lot_rt::RwLock::new()` 创建新的读写锁
-            // `HashMap::new()` 创建新的空哈希映射
             device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
+            config: Arc::new(Config {
+                server: Server { rpc_port: 8080, http_port: 8081 },
+                logging: Logging { 
+                    level: "info".to_string(), 
+                    file: String::new(),
+                    daily_rotation: false,
+                },
+                devices: vec![],
+            }),
         }
     }
 
@@ -329,8 +376,16 @@ mod tests {
             },
         );
         AppState {
-            // 用包含设备的映射创建新的AppState
             device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
+            config: Arc::new(Config {
+                server: Server { rpc_port: 8080, http_port: 8081 },
+                logging: Logging { 
+                    level: "info".to_string(), 
+                    file: String::new(),
+                    daily_rotation: false,
+                },
+                devices: vec![],
+            }),
         }
     }
 
@@ -382,13 +437,87 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get_health() {
-        let result = get_health().await;
+        // 测试空设备列表应该返回 unhealthy
+        let app_state = make_app_state();
+        let result = get_health(web::Data::new(app_state)).await;
         assert!(result.is_ok());
+        
+        // 验证返回的响应状态码是200
+        let response = result.unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+    }
+    
+    #[actix_rt::test]
+    async fn test_get_health_connected_devices() {
+        // 测试全部设备连接应该返回 healthy
+        let app_state = make_app_state_with_device("device-1", true);
+        let result = get_health(web::Data::new(app_state)).await;
+        assert!(result.is_ok());
+        
+        // 验证返回的响应状态码是200
+        let response = result.unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+    }
+    
+    #[actix_rt::test]
+    async fn test_get_health_mixed_devices() {
+        // 测试混合连接状态应该返回 degraded
+        let mut states = HashMap::new();
+        states.insert(
+            "device-1".to_string(),
+            DeviceStatus {
+                connected: true,
+                last_communication: Instant::now(),
+                error_count: 0,
+                reconnect_count: 0,
+            },
+        );
+        states.insert(
+            "device-2".to_string(),
+            DeviceStatus {
+                connected: false,
+                last_communication: Instant::now(),
+                error_count: 0,
+                reconnect_count: 0,
+            },
+        );
+        let app_state = AppState {
+            device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
+            config: Arc::new(Config {
+                server: Server { rpc_port: 8080, http_port: 8081 },
+                logging: Logging { 
+                    level: "info".to_string(), 
+                    file: String::new(),
+                    daily_rotation: false,
+                },
+                devices: vec![],
+            }),
+        };
+        let result = get_health(web::Data::new(app_state)).await;
+        assert!(result.is_ok());
+        
+        // 验证返回的响应状态码是200
+        let response = result.unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
     }
 
     #[actix_rt::test]
     async fn test_get_config() {
-        let result = get_config().await;
+        use crate::config::{Server, Logging};
+        
+        let app_state = AppState {
+            device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
+            config: Arc::new(Config {
+                server: Server { rpc_port: 8080, http_port: 8081 },
+                logging: Logging { 
+                    level: "info".to_string(), 
+                    file: String::new(),
+                    daily_rotation: false,
+                },
+                devices: vec![],
+            }),
+        };
+        let result = get_config(web::Data::new(app_state)).await;
         assert!(result.is_ok());
     }
 

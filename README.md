@@ -126,14 +126,10 @@ ROBOPLC_SIMULATED=1 cargo run
 | `write_batch` | Write multiple registers |
 
 ### HTTP API (port 8081)
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/devices` | GET | List all devices with status |
 | `/api/devices/{id}/status` | GET | Get specific device status |
-| `/api/health` | GET | Health check |
+| `/api/health` | GET | System health check (device connectivity) |
 | `/api/config` | GET | Current configuration |
-| `/api/config/reload` | POST | Reload configuration |
-| `/api/devices/{id}/register` | POST | Set a register value |
-| `/api/devices/{id}/batch` | POST | Batch read/write operations |
-| `/api/devices/{id}/move` | POST | Move robot arm |
+| `/api/config/reload` | POST | Returns success (reload via file watcher) |
