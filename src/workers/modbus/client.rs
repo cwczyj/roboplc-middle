@@ -2,8 +2,8 @@
 
 use roboplc::comm::tcp;
 use roboplc::comm::Client;
-use roboplc::io::IoMapping;
 use roboplc::io::modbus::prelude::*;
+use roboplc::io::IoMapping;
 use serde_json::Value as JsonValue;
 use std::time::{Duration, SystemTime};
 
@@ -19,16 +19,16 @@ pub enum ModbusOp {
 /// Result of a Modbus operation
 #[derive(Debug)]
 pub struct OperationResult {
-    success: bool,
-    data: JsonValue,
-    error: Option<String>,
+    pub success: bool,
+    pub data: JsonValue,
+    pub error: Option<String>,
 }
 
 /// Queued operation with tracking information
 #[allow(dead_code)]
 pub struct QueuedOperation {
-    operation: ModbusOp,
-    correlation_id: u64,
+    pub operation: ModbusOp,
+    pub correlation_id: u64,
 }
 
 // ==================== ModbusClient ====================
@@ -48,7 +48,7 @@ impl ModbusClient {
         }
     }
 
-    fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         let client = tcp::connect(&self.endpoint, timeout)?;
         client.connect()?;
         self.connection = Some(client);
@@ -63,7 +63,10 @@ impl ModbusClient {
         self.connect(timeout)
     }
 
-    fn ensure_connected(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn ensure_connected(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match &self.connection {
             Some(client) => {
                 if client.connect().is_err() {
@@ -77,7 +80,7 @@ impl ModbusClient {
         Ok(())
     }
 
-    fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
+    pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
         let client = match &self.connection {
             Some(c) => c.clone(),
             None => {

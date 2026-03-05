@@ -48,21 +48,21 @@ pub enum ConnectionState {
 // ==================== Backoff 指数退避 ====================
 
 #[derive(Debug, Clone, Copy)]
-struct Backoff {
+pub struct Backoff {
     attempts: u32,
     next_delay_ms: u64,
 }
 
 #[allow(dead_code)]
 impl Backoff {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             attempts: 0,
             next_delay_ms: BACKOFF_BASE_MS,
         }
     }
 
-    fn next_delay(&mut self) -> Duration {
+    pub fn next_delay(&mut self) -> Duration {
         let jitter = (self.next_delay_ms / 10) * (self.attempts as u64 % 3);
         let delay = self.next_delay_ms + jitter;
 
@@ -72,7 +72,7 @@ impl Backoff {
         Duration::from_millis(delay)
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.attempts = 0;
         self.next_delay_ms = BACKOFF_BASE_MS;
     }
@@ -81,14 +81,14 @@ impl Backoff {
 // ==================== TimeoutHandler ====================
 
 #[derive(Debug, Clone, Copy)]
-struct TimeoutHandler {
+pub struct TimeoutHandler {
     current: Duration,
     base: Duration,
     max: Duration,
 }
 
 impl TimeoutHandler {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current: BASE_TIMEOUT,
             base: BASE_TIMEOUT,
@@ -96,19 +96,19 @@ impl TimeoutHandler {
         }
     }
 
-    fn timeout(&self) -> Duration {
+    pub fn timeout(&self) -> Duration {
         self.current
     }
 
-    fn on_timeout(&mut self) {
+    pub fn on_timeout(&mut self) {
         self.current = (self.current * 2).min(self.max);
     }
 
-    fn on_success(&mut self) {
+    pub fn on_success(&mut self) {
         self.current = self.base;
     }
 
-    fn is_at_max(&self) -> bool {
+    pub fn is_at_max(&self) -> bool {
         self.current >= self.max
     }
 }
@@ -123,7 +123,7 @@ pub struct OperationQueue<T> {
 
 #[allow(dead_code)]
 impl<T> OperationQueue<T> {
-    fn new(max_in_flight: usize) -> Self {
+    pub fn new(max_in_flight: usize) -> Self {
         Self {
             pending: VecDeque::new(),
             in_flight: 0,
