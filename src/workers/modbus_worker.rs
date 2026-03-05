@@ -40,6 +40,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const BASE_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKOFF_BASE_MS: u64 = 100;
+#[allow(dead_code)]
 const BACKOFF_MAX_MS: u64 = 30000;
 
 // 全局事务计数器
@@ -84,6 +85,7 @@ struct Backoff {
     next_delay_ms: u64,
 }
 
+#[allow(dead_code)]
 impl Backoff {
     fn new() -> Self {
         Self {
@@ -151,6 +153,7 @@ struct OperationQueue<T> {
     max_in_flight: usize,
 }
 
+#[allow(dead_code)]
 impl<T> OperationQueue<T> {
     fn new(max_in_flight: usize) -> Self {
         Self {
@@ -211,6 +214,7 @@ struct OperationResult {
 }
 
 /// Queued operation with tracking information
+#[allow(dead_code)]
 struct QueuedOperation {
     operation: ModbusOp,
     correlation_id: u64,
@@ -301,7 +305,7 @@ impl ModbusClient {
             }
         };
 
-        let mut mapping = mapping;
+        let _mapping = mapping;
         let start = SystemTime::now();
         // Read raw register values
         let mut values = Vec::with_capacity(count as usize);
@@ -339,7 +343,7 @@ impl ModbusClient {
     fn write_single(&self, client: &Client, address: u16, value: u16) -> OperationResult {
         let register = ModbusRegister::new(ModbusRegisterKind::Holding, address);
 
-        let mapping = match ModbusMapping::create(client, self.unit_id, register, 1) {
+        let mut mapping = match ModbusMapping::create(client, self.unit_id, register, 1) {
             Ok(m) => m,
             Err(e) => {
                 return OperationResult {
@@ -350,7 +354,6 @@ impl ModbusClient {
             }
         };
 
-        let mut mapping = mapping;
         let start = SystemTime::now();
 
         // Write single u16 value
@@ -379,7 +382,7 @@ impl ModbusClient {
         let count = values.len() as u16;
         let register = ModbusRegister::new(ModbusRegisterKind::Holding, address);
 
-        let mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
+        let mut mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
             Ok(m) => m,
             Err(e) => {
                 return OperationResult {
@@ -390,7 +393,6 @@ impl ModbusClient {
             }
         };
 
-        let mut mapping = mapping;
         let start = SystemTime::now();
 
         // Write the values as Vec<u16>
@@ -427,6 +429,7 @@ pub struct ModbusWorker {
     last_communication: Option<SystemTime>,
     last_heartbeat: SystemTime,
     pending_transactions: HashMap<u16, TransactionId>,
+    #[allow(dead_code)]
     operation_queue: OperationQueue<QueuedOperation>,
     backoff: Backoff,
     timeout_handler: TimeoutHandler,
@@ -579,66 +582,38 @@ impl ModbusWorker {
     }
 
     /// Convert Operation and params to ModbusOp
+    /// Returns None for operations that don't map to Modbus directly
     fn operation_to_modbus_op(
         &self,
         operation: &Operation,
         params: &JsonValue,
     ) -> Option<ModbusOp> {
         match operation {
-            Operation::SetRegister => {
-                let address = params.get("address")?.as_str()?;
-                let value = params.get("value")?.as_u64()? as u16;
-                let addr = self.parse_address(address)?;
-                Some(ModbusOp::WriteSingle {
-                    address: addr,
-                    value,
-                })
-            }
-            Operation::GetRegister => {
-                let address = params.get("address")?.as_str()?;
-                let addr = self.parse_address(address)?;
+            Operation::ReadSignalGroup => {
+                // ReadSignalGroup maps to a Modbus read based on signal group config
+                let group_name = params.get("group_name")?.as_str()?;
+                let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
+                let addr = self.parse_address(&group.register_address)?;
                 Some(ModbusOp::ReadHolding {
                     address: addr,
-                    count: 1,
+                    count: group.register_count,
                 })
             }
-            Operation::WriteBatch => {
-                let values = params.get("values")?.as_array()?;
-                let ops: Vec<(u16, u16)> = values
-                    .iter()
-                    .filter_map(|v| {
-                        let addr = v.get(0)?.as_str().and_then(|a| self.parse_address(a))?;
-                        let val = v.get(1)?.as_u64()? as u16;
-                        Some((addr, val))
-                    })
-                    .collect();
-
-                // For simplicity, batch writes are handled as multiple single writes
-                // The first write is returned for queueing
-                if let Some((addr, val)) = ops.first() {
-                    Some(ModbusOp::WriteSingle {
-                        address: *addr,
-                        value: *val,
-                    })
-                } else {
-                    None
-                }
-            }
-            Operation::ReadBatch => {
-                let addresses = params.get("addresses")?.as_array()?;
-                if let Some(addr_str) = addresses.first().and_then(|v| v.as_str()) {
-                    let addr = self.parse_address(addr_str)?;
-                    Some(ModbusOp::ReadHolding {
-                        address: addr,
-                        count: addresses.len() as u16,
-                    })
-                } else {
-                    None
-                }
+            Operation::WriteSignalGroup => {
+                // WriteSignalGroup maps to a Modbus write based on signal group config
+                let group_name = params.get("group_name")?.as_str()?;
+                let data = params.get("values")?.as_array()?;
+                let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
+                let addr = self.parse_address(&group.register_address)?;
+                let values: Vec<u16> = data.iter().filter_map(|v| v.as_u64().map(|n| n as u16)).collect();
+                Some(ModbusOp::WriteMultiple {
+                    address: addr,
+                    values,
+                })
             }
             Operation::MoveTo | Operation::GetStatus => {
                 // These operations are not directly Modbus operations
-                // They might be handled differently or return an error
+                // They are handled separately in the run() method
                 None
             }
         }
@@ -652,7 +627,7 @@ impl ModbusWorker {
         }
 
         // Check for prefix (h, i, c, d)
-        let (prefix, num_part) = if addr_str.starts_with('h') || addr_str.starts_with('H') {
+        let (_prefix, num_part) = if addr_str.starts_with('h') || addr_str.starts_with('H') {
             ('h', &addr_str[1..])
         } else if addr_str.starts_with('i') || addr_str.starts_with('I') {
             ('i', &addr_str[1..])
@@ -666,209 +641,6 @@ impl ModbusWorker {
         };
 
         num_part.parse::<u16>().ok()
-    }
-
-    /// Handle ReadBatch operation: read multiple addresses
-    fn handle_read_batch(&mut self, params: &JsonValue, _correlation_id: u64) -> OperationResult {
-        let start = SystemTime::now();
-        
-        let addresses = match params.get("addresses").and_then(|v| v.as_array()) {
-            Some(arr) => arr,
-            None => {
-                return OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some("Missing or invalid 'addresses' array".to_string()),
-                }
-            }
-        };
-
-        if addresses.is_empty() {
-            return OperationResult {
-                success: false,
-                data: JsonValue::Null,
-                error: Some("Empty addresses array".to_string()),
-            };
-        }
-
-        let mut results = Vec::new();
-        let mut all_success = true;
-
-        for addr_value in addresses {
-            let addr_str = match addr_value.as_str() {
-                Some(s) => s,
-                None => {
-                    all_success = false;
-                    results.push(serde_json::json!({
-                        "address": addr_value.to_string(),
-                        "success": false,
-                        "error": "Invalid address format"
-                    }));
-                    continue;
-                }
-            };
-
-            let addr = match self.parse_address(addr_str) {
-                Some(a) => a,
-                None => {
-                    all_success = false;
-                    results.push(serde_json::json!({
-                        "address": addr_str,
-                        "success": false,
-                        "error": "Failed to parse address"
-                    }));
-                    continue;
-                }
-            };
-
-            // Execute read operation
-            let op = ModbusOp::ReadHolding { address: addr, count: 1 };
-            let result = if let Some(client) = &mut self.client {
-                client.execute_operation(&op)
-            } else {
-                OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some("Client not connected".to_string()),
-                }
-            };
-
-            if result.success {
-                let value = result.data.get("values").and_then(|v| v.as_array()).and_then(|arr| arr.first());
-                results.push(serde_json::json!({
-                    "address": addr_str,
-                    "success": true,
-                    "value": value
-                }));
-            } else {
-                all_success = false;
-                results.push(serde_json::json!({
-                    "address": addr_str,
-                    "success": false,
-                    "error": result.error.unwrap_or_else(|| "Unknown error".to_string())
-                }));
-            }
-        }
-
-        let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
-        OperationResult {
-            success: all_success,
-            data: serde_json::json!({
-                "results": results,
-                "total": addresses.len(),
-                "successful": results.iter().filter(|r| r.get("success").and_then(|s| s.as_bool()).unwrap_or(false)).count(),
-                "latency_us": latency
-            }),
-            error: if all_success { None } else { Some("Some reads failed".to_string()) },
-        }
-    }
-
-    /// Handle WriteBatch operation: write multiple (address, value) pairs
-    fn handle_write_batch(&mut self, params: &JsonValue, _correlation_id: u64) -> OperationResult {
-        let start = SystemTime::now();
-        
-        let values = match params.get("values").and_then(|v| v.as_array()) {
-            Some(arr) => arr,
-            None => {
-                return OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some("Missing or invalid 'values' array".to_string()),
-                }
-            }
-        };
-
-        if values.is_empty() {
-            return OperationResult {
-                success: false,
-                data: JsonValue::Null,
-                error: Some("Empty values array".to_string()),
-            };
-        }
-
-        let mut results = Vec::new();
-        let mut all_success = true;
-
-        for pair in values {
-            let addr_str = match pair.get(0).and_then(|v| v.as_str()) {
-                Some(s) => s,
-                None => {
-                    all_success = false;
-                    results.push(serde_json::json!({
-                        "address": "unknown",
-                        "success": false,
-                        "error": "Invalid address in pair"
-                    }));
-                    continue;
-                }
-            };
-
-            let value = match pair.get(1).and_then(|v| v.as_u64()) {
-                Some(v) => v as u16,
-                None => {
-                    all_success = false;
-                    results.push(serde_json::json!({
-                        "address": addr_str,
-                        "success": false,
-                        "error": "Invalid value in pair"
-                    }));
-                    continue;
-                }
-            };
-
-            let addr = match self.parse_address(addr_str) {
-                Some(a) => a,
-                None => {
-                    all_success = false;
-                    results.push(serde_json::json!({
-                        "address": addr_str,
-                        "success": false,
-                        "error": "Failed to parse address"
-                    }));
-                    continue;
-                }
-            };
-
-            // Execute write operation
-            let op = ModbusOp::WriteSingle { address: addr, value };
-            let result = if let Some(client) = &mut self.client {
-                client.execute_operation(&op)
-            } else {
-                OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some("Client not connected".to_string()),
-                }
-            };
-
-            if result.success {
-                results.push(serde_json::json!({
-                    "address": addr_str,
-                    "value": value,
-                    "success": true
-                }));
-            } else {
-                all_success = false;
-                results.push(serde_json::json!({
-                    "address": addr_str,
-                    "value": value,
-                    "success": false,
-                    "error": result.error.unwrap_or_else(|| "Unknown error".to_string())
-                }));
-            }
-        }
-
-        let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
-        OperationResult {
-            success: all_success,
-            data: serde_json::json!({
-                "results": results,
-                "total": values.len(),
-                "successful": results.iter().filter(|r| r.get("success").and_then(|s| s.as_bool()).unwrap_or(false)).count(),
-                "latency_us": latency
-            }),
-            error: if all_success { None } else { Some("Some writes failed".to_string()) },
-        }
     }
 }
 
@@ -930,85 +702,108 @@ impl Worker<Message, Variables> for ModbusWorker {
                     continue;
                 }
 
-                // Handle batch operations specially
+                // Handle operations
                 match operation {
-                    Operation::ReadBatch => {
-                        let result = self.handle_read_batch(&params, correlation_id);
-                        if let Some(latency) =
-                            result.data.get("latency_us").and_then(|v| v.as_u64())
-                        {
-                            self.record_communication(context, latency);
-                        }
+                    Operation::GetStatus => {
+                        // Return device connection status
+                        let status = serde_json::json!({
+                            "device_id": self.device.id,
+                            "connected": self.connection_state == ConnectionState::Connected,
+                            "connection_state": format!("{:?}", self.connection_state),
+                            "last_communication": self.last_communication.map(|t| {
+                                t.duration_since(UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64
+                            }),
+                        });
                         context.hub().send(Message::DeviceResponse {
                             device_id: self.device.id.clone(),
-                            success: result.success,
-                            data: result.data,
-                            error: result.error,
+                            success: true,
+                            data: status,
+                            error: None,
                             correlation_id,
                         });
                     }
-                    Operation::WriteBatch => {
-                        let result = self.handle_write_batch(&params, correlation_id);
-                        if let Some(latency) =
-                            result.data.get("latency_us").and_then(|v| v.as_u64())
-                        {
-                            self.record_communication(context, latency);
-                        }
+                    Operation::MoveTo => {
+                        // MoveTo is not supported for Modbus devices (PLC)
                         context.hub().send(Message::DeviceResponse {
                             device_id: self.device.id.clone(),
-                            success: result.success,
-                            data: result.data,
-                            error: result.error,
+                            success: false,
+                            data: JsonValue::Null,
+                            error: Some("MoveTo operation not implemented for this device type".to_string()),
                             correlation_id,
                         });
                     }
-                    _ => {
-                        // Non-batch operations: use the queue
+                    Operation::ReadSignalGroup => {
+                        let group_name = params.get("group_name").and_then(|v| v.as_str()).unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let queued_op = QueuedOperation {
-                                operation: modbus_op,
-                                correlation_id,
+                            let result = if let Some(client) = &mut self.client {
+                                client.execute_operation(&modbus_op)
+                            } else {
+                                OperationResult {
+                                    success: false,
+                                    data: JsonValue::Null,
+                                    error: Some("Client not connected".to_string()),
+                                }
                             };
-                            self.operation_queue.push(queued_op);
+                            // Record latency if available
+                            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                                self.record_communication(context, latency);
+                            }
+                            context.hub().send(Message::DeviceResponse {
+                                device_id: self.device.id.clone(),
+                                success: result.success,
+                                data: serde_json::json!({
+                                    "group_name": group_name,
+                                    "result": result.data
+                                }),
+                                error: result.error,
+                                correlation_id,
+                            });
                         } else {
-                            // Unsupported operation
                             context.hub().send(Message::DeviceResponse {
                                 device_id: self.device.id.clone(),
                                 success: false,
                                 data: JsonValue::Null,
-                                error: Some(format!("Unsupported operation: {:?}", operation)),
+                                error: Some(format!("Invalid signal group: {}", group_name)),
                                 correlation_id,
                             });
-                            continue;
                         }
-                        // Process operations from the queue
-                        while self.operation_queue.can_start() {
-                            if let Some(queued_op) = self.operation_queue.start_next() {
-                                let result = if let Some(client) = &mut self.client {
-                                    client.execute_operation(&queued_op.operation)
-                                } else {
-                                    OperationResult {
-                                        success: false,
-                                        data: JsonValue::Null,
-                                        error: Some("Client not connected".to_string()),
-                                    }
-                                };
-                                // Record latency if available
-                                if let Some(latency) =
-                                    result.data.get("latency_us").and_then(|v| v.as_u64())
-                                {
-                                    self.record_communication(context, latency);
+                    }
+                    Operation::WriteSignalGroup => {
+                        let group_name = params.get("group_name").and_then(|v| v.as_str()).unwrap_or("");
+                        if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
+                            let result = if let Some(client) = &mut self.client {
+                                client.execute_operation(&modbus_op)
+                            } else {
+                                OperationResult {
+                                    success: false,
+                                    data: JsonValue::Null,
+                                    error: Some("Client not connected".to_string()),
                                 }
-                                // Send response
-                                context.hub().send(Message::DeviceResponse {
-                                    device_id: self.device.id.clone(),
-                                    success: result.success,
-                                    data: result.data,
-                                    error: result.error,
-                                    correlation_id: queued_op.correlation_id,
-                                });
-                                self.operation_queue.complete();
+                            };
+                            // Record latency if available
+                            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                                self.record_communication(context, latency);
                             }
+                            context.hub().send(Message::DeviceResponse {
+                                device_id: self.device.id.clone(),
+                                success: result.success,
+                                data: serde_json::json!({
+                                    "group_name": group_name,
+                                    "result": result.data
+                                }),
+                                error: result.error,
+                                correlation_id,
+                            });
+                        } else {
+                            context.hub().send(Message::DeviceResponse {
+                                device_id: self.device.id.clone(),
+                                success: false,
+                                data: JsonValue::Null,
+                                error: Some(format!("Invalid signal group: {}", group_name)),
+                                correlation_id,
+                            });
                         }
                     }
                 }
@@ -1046,7 +841,7 @@ impl Worker<Message, Variables> for ModbusWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DeviceType, RegisterMapping};
+    use crate::config::{DeviceType, SignalGroup};
     use crate::{DeviceEventType, LatencySample};
 
     #[test]
@@ -1074,7 +869,7 @@ mod tests {
             tcp_nodelay: true,
             max_concurrent_ops: 3,
             heartbeat_interval_sec: 30,
-            register_mappings: Vec::<RegisterMapping>::new(),
+            signal_groups: Vec::<SignalGroup>::new(),
         }
     }
 
@@ -1309,37 +1104,5 @@ mod tests {
         assert_eq!(worker.parse_address("c10"), Some(10));
         assert_eq!(worker.parse_address("d5"), Some(5));
         assert_eq!(worker.parse_address("100"), Some(100)); // No prefix = holding
-    }
-
-    #[test]
-    fn operation_to_modbus_op_set_register() {
-        let worker = ModbusWorker::new(test_device());
-        let params = serde_json::json!({ "address": "h100", "value": 42 });
-
-        let result = worker.operation_to_modbus_op(&Operation::SetRegister, &params);
-
-        assert!(matches!(
-            result,
-            Some(ModbusOp::WriteSingle {
-                address: 100,
-                value: 42
-            })
-        ));
-    }
-
-    #[test]
-    fn operation_to_modbus_op_get_register() {
-        let worker = ModbusWorker::new(test_device());
-        let params = serde_json::json!({ "address": "h200" });
-
-        let result = worker.operation_to_modbus_op(&Operation::GetRegister, &params);
-
-        assert!(matches!(
-            result,
-            Some(ModbusOp::ReadHolding {
-                address: 200,
-                count: 1
-            })
-        ));
     }
 }

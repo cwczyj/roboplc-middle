@@ -146,18 +146,10 @@ pub enum Message {
 // Operation 表示可以在设备上执行的操作类型
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Operation {
-    // 枚举变体，每个变体代表一种操作
-    // SetRegister: 设置/写入单个寄存器的值
-    SetRegister,
-    // GetRegister: 读取单个寄存器的值
-    GetRegister,
-    // WriteBatch: 批量写入多个寄存器
-    WriteBatch,
-    // ReadBatch: 批量读取多个寄存器
-    ReadBatch,
-    // MoveTo: 控制机械臂移动到指定位置（机器人特有的操作）
+    // Signal group operations (for device profiles)
+    ReadSignalGroup,
+    WriteSignalGroup,
     MoveTo,
-    // GetStatus: 获取设备的整体状态
     GetStatus,
 }
 
@@ -184,3 +176,93 @@ pub struct SystemStatusResponse {
 // Response data for device control operations.
 // Using tuple type for compatibility with rpc_worker's ResponseSender
 pub type DeviceResponseData = (bool, JsonValue, Option<String>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_operation_read_signal_group_serialization() {
+        let op = Operation::ReadSignalGroup;
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains("ReadSignalGroup"));
+        let decoded: Operation = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, Operation::ReadSignalGroup));
+    }
+
+    #[test]
+    fn test_operation_write_signal_group_serialization() {
+        let op = Operation::WriteSignalGroup;
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains("WriteSignalGroup"));
+        let decoded: Operation = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, Operation::WriteSignalGroup));
+    }
+
+    #[test]
+    fn test_operation_move_to_serialization() {
+        let op = Operation::MoveTo;
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains("MoveTo"));
+        let decoded: Operation = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, Operation::MoveTo));
+    }
+
+    #[test]
+    fn test_operation_get_status_serialization() {
+        let op = Operation::GetStatus;
+        let json = serde_json::to_string(&op).unwrap();
+        assert!(json.contains("GetStatus"));
+        let decoded: Operation = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, Operation::GetStatus));
+    }
+
+    #[test]
+    fn test_device_control_clone_with_read_signal_group() {
+        let msg = Message::DeviceControl {
+            device_id: "plc-1".to_string(),
+            operation: Operation::ReadSignalGroup,
+            params: serde_json::json!({ "group_name": "sensors" }),
+            correlation_id: 123,
+            respond_to: None,
+        };
+        // Verify message can be cloned (required for Hub)
+        let cloned = msg.clone();
+        assert!(matches!(cloned, Message::DeviceControl { .. }));
+        if let Message::DeviceControl { ref device_id, ref operation, .. } = cloned {
+            assert_eq!(device_id, "plc-1");
+            assert!(matches!(operation, Operation::ReadSignalGroup));
+        }
+    }
+
+    #[test]
+    fn test_device_control_clone_with_write_signal_group() {
+        let msg = Message::DeviceControl {
+            device_id: "robot-1".to_string(),
+            operation: Operation::WriteSignalGroup,
+            params: serde_json::json!({ "group_name": "actuators", "values": [1, 2, 3] }),
+            correlation_id: 456,
+            respond_to: None,
+        };
+        // Verify message can be cloned (required for Hub)
+        let cloned = msg.clone();
+        assert!(matches!(cloned, Message::DeviceControl { .. }));
+    }
+
+    #[test]
+    fn test_device_control_clone_with_move_to() {
+        let msg = Message::DeviceControl {
+            device_id: "test-device".to_string(),
+            operation: Operation::MoveTo,
+            params: serde_json::json!({ "position": [10.0, 20.0, 30.0] }),
+            correlation_id: 789,
+            respond_to: None,
+        };
+        // Verify message can be cloned (required for Hub)
+        let cloned = msg.clone();
+        assert!(matches!(cloned, Message::DeviceControl { .. }));
+        if let Message::DeviceControl { ref operation, .. } = cloned {
+            assert!(matches!(operation, Operation::MoveTo));
+        }
+    }
+}

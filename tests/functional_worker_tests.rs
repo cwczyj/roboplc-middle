@@ -16,7 +16,7 @@ fn test_device() -> Device {
         tcp_nodelay: true,
         max_concurrent_ops: 3,
         heartbeat_interval_sec: 30,
-        register_mappings: vec![],
+        signal_groups: vec![],
     }
 }
 

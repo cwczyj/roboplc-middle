@@ -1,0 +1,220 @@
+# RoboPLC Middleware 配置文件示例
+# 复制此文件到 config.toml 并根据实际情况修改
+#
+# 寄存器地址格式说明:
+#   h = Holding Register (4x) - 可读写
+#   i = Input Register (3x) - 只读
+#   c = Coil (0x) - 可读写单个位
+#   d = Discrete Input (1x) - 只读单个位
+
+# ==================== 服务器配置 ====================
+[server]
+rpc_port = 8080      # JSON-RPC 服务器端口
+http_port = 8081     # HTTP 管理 API 端口
+
+# ==================== 日志配置 ====================
+[logging]
+level = "info"        # 日志级别: trace, debug, info, warn, error
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+# ==================== 设备配置示例 1: PLC ====================
+# 示例: 带有多信号组的 PLC 设备
+# 展示: Holding Registers (h) 和 Input Registers (i)
+[[devices]]
+id = "plc-1"                     # 设备唯一标识符
+type = "plc"                     # 设备类型: plc 或 robot_arm
+address = "192.168.1.100"        # Modbus TCP 地址
+port = 502                       # Modbus TCP 端口
+unit_id = 1                      # Modbus 单元 ID
+addressing_mode = "zero_based"   # 地址模式: zero_based 或 one_based
+byte_order = "big_endian"        # 字节序: big_endian, little_endian, little_endian_byte_swap, mid_big
+tcp_nodelay = true               # 禁用 Nagle 算法，减少延迟
+max_concurrent_ops = 3           # 最大并发操作数
+heartbeat_interval_sec = 30      # 心跳间隔(秒)
+
+# 信号组: 传感器数据 - Holding Registers
+# 地址 h100 开始，共 6 个寄存器 (3个 F32 = 6 个 u16)
+[[devices.signal_groups]]
+name = "sensor_data"
+description = "温度、湿度和压力传感器"
+register_address = "h100"        # Holding Register 地址 100
+register_count = 6               # 寄存器数量
+
+[[devices.signal_groups.fields]]
+name = "temperature"             # 字段名称
+data_type = "F32"                # 数据类型: F32 (32位浮点)
+offset = 0                       # 偏移量(寄存器单位): 寄存器 100-101
+
+[[devices.signal_groups.fields]]
+name = "humidity"
+data_type = "F32"
+offset = 2                       # 寄存器 102-103
+
+[[devices.signal_groups.fields]]
+name = "pressure"
+data_type = "F32"
+offset = 4                       # 寄存器 104-105
+
+# 信号组: 设备状态 - Input Registers (只读)
+# 地址 i0 开始，共 4 个寄存器
+[[devices.signal_groups]]
+name = "device_status"
+description = "设备状态和错误码"
+register_address = "i0"          # Input Register 地址 0
+register_count = 4
+
+[[devices.signal_groups.fields]]
+name = "error_code"              # 错误码 (U16)
+data_type = "U16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "warning_flags"           # 警告标志 (U16)
+data_type = "U16"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "uptime_seconds"          # 运行时间 (U32，占2个寄存器)
+data_type = "U32"
+offset = 2
+
+# 信号组: 离散输入 - Discrete Inputs (只读位)
+# 地址 d0 开始，共 8 个离散输入
+[[devices.signal_groups]]
+name = "discrete_inputs"
+description = "开关状态监控"
+register_address = "d0"
+register_count = 8               # 8 个离散输入
+
+[[devices.signal_groups.fields]]
+name = "emergency_stop"          # 急停开关
+data_type = "Bool"
+offset = 0                       # 第 0 位
+
+[[devices.signal_groups.fields]]
+name = "door_closed"             # 门关闭状态
+data_type = "Bool"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "limit_switch_home"       # 原点限位开关
+data_type = "Bool"
+offset = 2
+
+# 信号组: 线圈输出 - Coils (读写位)
+# 地址 c0 开始，共 8 个线圈
+[[devices.signal_groups]]
+name = "coil_outputs"
+description = "数字输出控制"
+register_address = "c0"
+register_count = 8
+
+[[devices.signal_groups.fields]]
+name = "relay_1"                 # 继电器 1
+data_type = "Bool"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "relay_2"
+data_type = "Bool"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "alarm_led"
+data_type = "Bool"
+offset = 2
+
+# ==================== 设备配置示例 2: 机械臂 ====================
+# 示例: 机械臂设备，使用小端字节序
+# 展示: 整数类型 (I32)
+[[devices]]
+id = "robot-arm-1"
+type = "robot_arm"
+address = "192.168.1.101"
+port = 502
+unit_id = 1
+byte_order = "little_endian"     # 小端字节序 (某些 PLC 使用)
+addressing_mode = "zero_based"
+
+# 信号组: 位置坐标 - 有符号整数
+[[devices.signal_groups]]
+name = "position"
+description = "机械臂位置坐标"
+register_address = "h200"
+register_count = 6               # 3 个 I32 = 6 个寄存器
+
+[[devices.signal_groups.fields]]
+name = "x_position"              # X 坐标
+data_type = "I32"                # 有符号 32 位整数
+offset = 0                       # 寄存器 200-201
+
+[[devices.signal_groups.fields]]
+name = "y_position"              # Y 坐标
+data_type = "I32"
+offset = 2                       # 寄存器 202-203
+
+[[devices.signal_groups.fields]]
+name = "z_position"              # Z 坐标
+data_type = "I32"
+offset = 4                       # 寄存器 204-205
+
+# 信号组: 速度设置
+[[devices.signal_groups]]
+name = "velocity"
+description = "运动速度设置"
+register_address = "h210"
+register_count = 2
+
+[[devices.signal_groups.fields]]
+name = "linear_speed"            # 线性速度 (U16)
+data_type = "U16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "angular_speed"           # 角速度 (I16)
+data_type = "I16"
+offset = 1
+
+# ==================== 设备配置示例 3: 简化设备 ====================
+# 示例: 简单设备，只有一个信号组
+[[devices]]
+id = "sensor-box"
+type = "plc"
+address = "192.168.1.102"
+port = 502
+unit_id = 2
+# 使用默认地址模式和字节序
+
+[[devices.signal_groups]]
+name = "analog_inputs"
+register_address = "i100"
+register_count = 4
+
+[[devices.signal_groups.fields]]
+name = "adc_channel_1"
+data_type = "U16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "adc_channel_2"
+data_type = "U16"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "adc_channel_3"
+data_type = "U16"
+offset = 2
+
+[[devices.signal_groups.fields]]
+name = "adc_channel_4"
+data_type = "U16"
+offset = 3
+
+# ==================== 数据类型说明 ====================
+# U16  - 无符号 16 位整数 (0 到 65535), 占用 1 个寄存器
+# U32  - 无符号 32 位整数, 占用 2 个寄存器
+# I16  - 有符号 16 位整数 (-32768 到 32767), 占用 1 个寄存器
+# I32  - 有符号 32 位整数, 占用 2 个寄存器
+# F32  - 32 位浮点数 (IEEE 754), 占用 2 个寄存器
+# Bool - 布尔值 (单个位), 占用 1 个寄存器

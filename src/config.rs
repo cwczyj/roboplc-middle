@@ -156,9 +156,9 @@ pub struct Device {
     /// 心跳间隔（秒）
     #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval_sec: u32,
-    /// 寄存器地址映射列表
+    /// 信号组列表
     #[serde(default)]
-    pub register_mappings: Vec<RegisterMapping>,
+    pub signal_groups: Vec<SignalGroup>,
 }
 
 /// 默认 TCP_NODELAY 值
@@ -268,6 +268,77 @@ pub struct RegisterMapping {
     pub description: String,
 }
 
+/// 信号组
+///
+/// 定义一批在连续寄存器范围内的相关信号。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalGroup {
+    /// 信号组名称
+    pub name: String,
+    /// 信号组描述
+    #[serde(default)]
+    pub description: String,
+    /// Modbus 地址（带类型前缀，如 "h100"）
+    pub register_address: String,
+    /// 寄存器数量
+    pub register_count: u16,
+    /// 字段映射列表
+    pub fields: Vec<FieldMapping>,
+}
+
+/// 字段映射
+///
+/// 将单个字段映射到寄存器组内的偏移量。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldMapping {
+    /// 字段名称
+    pub name: String,
+    /// 数据类型
+    pub data_type: DataType,
+    /// 寄存器偏移量（以寄存器为单位）
+    pub offset: u16,
+}
+
+impl SignalGroup {
+    /// 验证信号组的配置是否有效
+    pub fn validate(&self) -> Result<(), String> {
+        use std::collections::HashSet;
+
+        let mut seen_fields = HashSet::new();
+
+        for field in &self.fields {
+            if !seen_fields.insert(&field.name) {
+                return Err(format!(
+                    "Duplicate field name '{}' in signal group '{}'",
+                    field.name, self.name
+                ));
+            }
+
+            let required = field.data_type.required_registers();
+            let end_offset = field.offset.saturating_add(required);
+
+            if end_offset > self.register_count {
+                return Err(format!(
+                    "Field '{}' in signal group '{}' requires {} registers, but group only has {}",
+                    field.name, self.name, required, self.register_count
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DataType {
+    /// 返回该数据类型需要的寄存器数量
+    pub fn required_registers(&self) -> u16 {
+        match self {
+            DataType::U16 | DataType::I16 | DataType::Bool => 1,
+            DataType::U32 | DataType::I32 | DataType::F32 => 2,
+        }
+    }
+}
+
 /// 数据类型
 ///
 /// 定义寄存器中存储的数据类型。
@@ -333,6 +404,9 @@ pub enum ConfigError {
     /// 地址超出范围
     #[error("Address out of range for device '{0}' register '{1}': {2}")]
     AddressOutOfRange(String, String, u32),
+    /// 信号组验证错误
+    #[error("Signal group validation error for device '{0}': {1}")]
+    SignalGroupValidation(String, String),
 }
 
 // impl 为类型实现方法
@@ -412,55 +486,50 @@ impl Config {
                 return Err(ConfigError::DuplicateDeviceId(device.id.clone()));
             }
 
-            // 遍历设备的寄存器映射
-            for mapping in &device.register_mappings {
-                // trim() 去除字符串两端的空白字符
-                // addr 类型是 &str（字符串切片），是借用
-                let addr = mapping.address.trim();
-
-                // len() 返回字符串的字节长度
+            // 验证信号组
+            for group in &device.signal_groups {
+                // 验证寄存器地址格式
+                let addr = group.register_address.trim();
                 if addr.len() < 2 {
                     return Err(ConfigError::InvalidAddressFormat(
                         device.id.clone(),
-                        mapping.signal_name.clone(),
+                        group.name.clone(),
                         addr.to_string(),
                     ));
                 }
 
-                // [0..1] 是范围切片，获取第 0 个字符（字节）
-                // to_lowercase() 转为小写，返回新的 String
                 let prefix = &addr[0..1].to_lowercase();
-                // [1..] 范围从第 1 个字符到末尾
                 let num_str = &addr[1..];
 
-                // matches! 宏检查值是否匹配给定的模式
-                // 这里检查前缀是否是 h、d、c、i 之一
                 if !matches!(prefix.as_str(), "h" | "d" | "c" | "i") {
                     return Err(ConfigError::InvalidAddressFormat(
                         device.id.clone(),
-                        mapping.signal_name.clone(),
+                        group.name.clone(),
                         addr.to_string(),
                     ));
                 }
 
-                // if let 是模式匹配语法，用于解包 Result 或 Option
-                // parse::<u32>() 尝试将字符串解析为 u32
-                // Ok(num) 表示解析成功，num 是解析后的值
                 if let Ok(num) = num_str.parse::<u32>() {
-                    // Modbus 地址最大为 65535 (16 位无符号整数的最大值)
                     if num > 65535 {
                         return Err(ConfigError::AddressOutOfRange(
                             device.id.clone(),
-                            mapping.signal_name.clone(),
+                            group.name.clone(),
                             num,
                         ));
                     }
                 } else {
-                    // 解析失败，说明数字部分无效
                     return Err(ConfigError::InvalidAddressFormat(
                         device.id.clone(),
-                        mapping.signal_name.clone(),
+                        group.name.clone(),
                         addr.to_string(),
+                    ));
+                }
+
+                // 验证信号组字段
+                if let Err(err) = group.validate() {
+                    return Err(ConfigError::SignalGroupValidation(
+                        device.id.clone(),
+                        err,
                     ));
                 }
             }

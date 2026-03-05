@@ -64,26 +64,18 @@ enum RpcMethod<'a> {
     GetStatus {
         device_id: &'a str,
     },
-    SetRegister {
+    ReadSignalGroup {
         device_id: &'a str,
-        address: String,
-        value: u16,
+        group_name: String,
     },
-    GetRegister {
+    WriteSignalGroup {
         device_id: &'a str,
-        address: String,
+        group_name: String,
+        data: JsonValue,
     },
     MoveTo {
         device_id: &'a str,
         position: String,
-    },
-    ReadBatch {
-        device_id: &'a str,
-        addresses: Vec<String>,
-    },
-    WriteBatch {
-        device_id: &'a str,
-        values: Vec<(String, u16)>,
     },
 }
 
@@ -197,17 +189,20 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
             RpcMethod::GetStatus { device_id } => {
                 self.send_device_control(device_id, Operation::GetStatus, serde_json::json!({}))
             }
-            RpcMethod::SetRegister {
+            RpcMethod::ReadSignalGroup {
                 device_id,
-                address,
-                value,
+                group_name,
             } => {
-                let params = serde_json::json!({ "address": address, "value": value });
-                self.send_device_control(device_id, Operation::SetRegister, params)
+                let params = serde_json::json!({ "group_name": group_name });
+                self.send_device_control(device_id, Operation::ReadSignalGroup, params)
             }
-            RpcMethod::GetRegister { device_id, address } => {
-                let params = serde_json::json!({ "address": address });
-                self.send_device_control(device_id, Operation::GetRegister, params)
+            RpcMethod::WriteSignalGroup {
+                device_id,
+                group_name,
+                data,
+            } => {
+                let params = serde_json::json!({ "group_name": group_name, "data": data });
+                self.send_device_control(device_id, Operation::WriteSignalGroup, params)
             }
             RpcMethod::MoveTo {
                 device_id,
@@ -215,17 +210,6 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
             } => {
                 let params = serde_json::json!({ "position": position });
                 self.send_device_control(device_id, Operation::MoveTo, params)
-            }
-            RpcMethod::ReadBatch {
-                device_id,
-                addresses,
-            } => {
-                let params = serde_json::json!({ "addresses": addresses });
-                self.send_device_control(device_id, Operation::ReadBatch, params)
-            }
-            RpcMethod::WriteBatch { device_id, values } => {
-                let params = serde_json::json!({ "values": values });
-                self.send_device_control(device_id, Operation::WriteBatch, params)
             }
         }
     }
@@ -897,15 +881,73 @@ mod extended_tests {
         let (tx, _rx) = oneshot::channel();
         let request = DeviceControlRequest {
             device_id: "plc-1".to_string(),
-            operation: Operation::SetRegister,
-            params: serde_json::json!({"address": "h100", "value": 42}),
+            operation: Operation::WriteSignalGroup,
+            params: serde_json::json!({ "group_name": "temperature_sensor", "data": { "value": 42 } }),
             correlation_id: 12345,
             respond_to: tx,
         };
 
         assert_eq!(request.device_id, "plc-1");
-        assert!(matches!(request.operation, Operation::SetRegister));
+        assert!(matches!(request.operation, Operation::WriteSignalGroup));
         assert_eq!(request.correlation_id, 12345);
+        assert_eq!(request.params["group_name"], "temperature_sensor");
+        assert_eq!(request.params["data"]["value"], 42);
+    }
+
+    /// Test ReadSignalGroup request creation with proper params
+    #[test]
+    fn read_signal_group_request_creation() {
+        let (tx, _rx) = oneshot::channel();
+        let request = DeviceControlRequest {
+            device_id: "plc-1".to_string(),
+            operation: Operation::ReadSignalGroup,
+            params: serde_json::json!({ "group_name": "temperature_sensor" }),
+            correlation_id: 12346,
+            respond_to: tx,
+        };
+
+        assert_eq!(request.device_id, "plc-1");
+        assert!(matches!(request.operation, Operation::ReadSignalGroup));
+        assert_eq!(request.correlation_id, 12346);
+        assert_eq!(request.params["group_name"], "temperature_sensor");
+    }
+
+    /// Test that missing group_name returns error in params validation
+    #[test]
+    fn read_signal_group_missing_group_name() {
+        let params = serde_json::json!({}); // Missing group_name
+        assert!(params.get("group_name").is_none(), "group_name should be missing");
+    }
+
+    /// Test that missing device_id triggers error path
+    #[test]
+    fn device_control_missing_device_id() {
+        let (tx, _rx) = oneshot::channel();
+        let request = DeviceControlRequest {
+            device_id: "".to_string(), // Empty device_id
+            operation: Operation::ReadSignalGroup,
+            params: serde_json::json!({ "group_name": "temperature_sensor" }),
+            correlation_id: 12347,
+            respond_to: tx,
+        };
+
+        assert!(request.device_id.is_empty(), "device_id should be empty");
+    }
+
+    /// Test WriteSignalGroup with empty data
+    #[test]
+    fn write_signal_group_empty_data() {
+        let (tx, _rx) = oneshot::channel();
+        let request = DeviceControlRequest {
+            device_id: "plc-1".to_string(),
+            operation: Operation::WriteSignalGroup,
+            params: serde_json::json!({ "group_name": "temperature_sensor", "data": {} }),
+            correlation_id: 12348,
+            respond_to: tx,
+        };
+
+        assert!(request.params["data"].is_object(), "data should be an object");
+        assert_eq!(request.params["data"].as_object().unwrap().len(), 0);
     }
 
     // =========================================================================

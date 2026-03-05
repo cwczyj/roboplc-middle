@@ -148,10 +148,15 @@ address = "192.168.1.100"
 port = 502
 unit_id = 1
 
-[[devices.register_mappings]]
-signal_name = "test"
-address = "h100"
+[[devices.signal_groups]]
+name = "test_group"
+register_address = "h100"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "test"
 data_type = "u16"
+offset = 0
 "#;
     let temp_file = create_temp_config(config_content);
     let result = Config::from_file(temp_file.path());
@@ -178,10 +183,15 @@ address = "192.168.1.100"
 port = 502
 unit_id = 1
 
-[[devices.register_mappings]]
-signal_name = "test"
-address = "x100"
+[[devices.signal_groups]]
+name = "test_group"
+register_address = "x100"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "test"
 data_type = "u16"
+offset = 0
 "#;
     let temp_file = create_temp_config(config_content);
     let result = Config::from_file(temp_file.path());
@@ -208,10 +218,15 @@ address = "192.168.1.100"
 port = 502
 unit_id = 1
 
-[[devices.register_mappings]]
-signal_name = "test"
-address = "h70000"
+[[devices.signal_groups]]
+name = "test_group"
+register_address = "h70000"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "test"
 data_type = "u16"
+offset = 0
 "#;
     let temp_file = create_temp_config(config_content);
     let result = Config::from_file(temp_file.path());

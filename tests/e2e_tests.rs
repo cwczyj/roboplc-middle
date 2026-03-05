@@ -282,8 +282,8 @@ fn test_rpc_creates_device_control_message() {
     let correlation_id = 12345u64;
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
-        operation: Operation::GetRegister,
-        params: json!({ "address": "h100" }),
+        operation: Operation::ReadSignalGroup,
+        params: json!({ "group_name": "sensor_data" }),
         correlation_id,
         respond_to: response_tx,
     };
@@ -295,8 +295,8 @@ fn test_rpc_creates_device_control_message() {
     let received = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(received.device_id, "test-plc");
     assert_eq!(received.correlation_id, 12345);
-    assert!(matches!(received.operation, Operation::GetRegister));
-    assert_eq!(received.params["address"], "h100");
+    assert!(matches!(received.operation, Operation::ReadSignalGroup));
+    assert_eq!(received.params["group_name"], "sensor_data");
 }
 
 // ============================================================================
@@ -315,8 +315,8 @@ fn test_device_control_set_register_message() {
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
-        operation: Operation::SetRegister,
-        params: json!({ "address": "h200", "value": 42 }),
+        operation: Operation::WriteSignalGroup,
+        params: json!({ "group_name": "actuators", "data": { "valve": 42 } }),
         correlation_id: 99999,
         respond_to: response_tx,
     };
@@ -325,9 +325,9 @@ fn test_device_control_set_register_message() {
 
     let received = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(received.device_id, "test-plc");
-    assert!(matches!(received.operation, Operation::SetRegister));
-    assert_eq!(received.params["address"], "h200");
-    assert_eq!(received.params["value"], 42);
+    assert!(matches!(received.operation, Operation::WriteSignalGroup));
+    assert_eq!(received.params["group_name"], "actuators");
+    assert_eq!(received.params["data"]["valve"], 42);
     assert_eq!(received.correlation_id, 99999);
 }
 
@@ -347,8 +347,8 @@ fn test_device_control_read_batch_message() {
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
-        operation: Operation::ReadBatch,
-        params: json!({ "addresses": ["h100", "h101", "h102"] }),
+        operation: Operation::ReadSignalGroup,
+        params: json!({ "group_name": "sensor_batch" }),
         correlation_id: 55555,
         respond_to: response_tx,
     };
@@ -357,10 +357,10 @@ fn test_device_control_read_batch_message() {
 
     let received = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(received.device_id, "test-plc");
-    assert!(matches!(received.operation, Operation::ReadBatch));
+    assert!(matches!(received.operation, Operation::ReadSignalGroup));
     assert_eq!(
-        received.params["addresses"],
-        json!(["h100", "h101", "h102"])
+        received.params["group_name"],
+        json!("sensor_batch")
     );
     assert_eq!(received.correlation_id, 55555);
 }
@@ -381,8 +381,8 @@ fn test_device_control_write_batch_message() {
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
-        operation: Operation::WriteBatch,
-        params: json!({ "values": [["h100", 10], ["h101", 20]] }),
+        operation: Operation::WriteSignalGroup,
+        params: json!({ "group_name": "actuator_batch", "data": { "h100": 10, "h101": 20 } }),
         correlation_id: 66666,
         respond_to: response_tx,
     };
@@ -391,10 +391,10 @@ fn test_device_control_write_batch_message() {
 
     let received = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(received.device_id, "test-plc");
-    assert!(matches!(received.operation, Operation::WriteBatch));
+    assert!(matches!(received.operation, Operation::WriteSignalGroup));
     assert_eq!(
-        received.params["values"],
-        json!([["h100", 10], ["h101", 20]])
+        received.params["group_name"],
+        json!("actuator_batch")
     );
     assert_eq!(received.correlation_id, 66666);
 }
@@ -415,8 +415,8 @@ fn test_response_sender_receives_response() {
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),
-        operation: Operation::GetRegister,
-        params: json!({ "address": "h100" }),
+        operation: Operation::ReadSignalGroup,
+        params: json!({ "group_name": "sensor_data" }),
         correlation_id: 88888,
         respond_to: response_tx,
     };
@@ -457,8 +457,8 @@ fn test_correlation_id_uniqueness() {
         let (response_tx, _response_rx) = oneshot::channel();
         let request = DeviceControlRequest {
             device_id: format!("device-{}", i),
-            operation: Operation::GetRegister,
-            params: json!({ "address": "h100" }),
+            operation: Operation::ReadSignalGroup,
+            params: json!({ "group_name": "sensor_data" }),
             correlation_id: i as u64 * 1000,
             respond_to: response_tx,
         };
@@ -513,8 +513,8 @@ fn test_rpc_to_modbus_roundtrip() {
     // Create DeviceControl message (simulating RPC worker)
     let control_message = Message::DeviceControl {
         device_id: "test-plc".to_string(),
-        operation: Operation::GetRegister,
-        params: json!({ "address": "h100" }),
+        operation: Operation::ReadSignalGroup,
+        params: json!({ "group_name": "sensor_data" }),
         correlation_id: test_correlation_id,
         respond_to: None,
     };
@@ -529,8 +529,8 @@ fn test_rpc_to_modbus_roundtrip() {
     } = control_message
     {
         assert_eq!(device_id, "test-plc");
-        assert!(matches!(operation, Operation::GetRegister));
-        assert_eq!(params["address"], "h100");
+        assert!(matches!(operation, Operation::ReadSignalGroup));
+        assert_eq!(params["group_name"], "sensor_data");
         assert_eq!(
             correlation_id, test_correlation_id,
             "correlation_id should match the original request"
@@ -587,8 +587,8 @@ fn test_error_response_preserves_correlation_id() {
     // Create DeviceControl message
     let control_message = Message::DeviceControl {
         device_id: "nonexistent-device".to_string(),
-        operation: Operation::GetRegister,
-        params: json!({ "address": "h100" }),
+        operation: Operation::ReadSignalGroup,
+        params: json!({ "group_name": "sensor_data" }),
         correlation_id,
         respond_to: None,
     };
