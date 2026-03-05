@@ -48,6 +48,7 @@
 // pub mod 声明公共子模块，使它们可以被外部 crate 使用
 pub mod config;     // 配置解析模块
 pub mod messages;   // 消息类型定义模块
+pub mod data_conversion;  // 数据类型转换模块
 
 pub mod workers;    // Worker 实现模块
 
