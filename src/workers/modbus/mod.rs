@@ -201,11 +201,13 @@ impl ModbusWorker {
                 // ReadSignalGroup maps to a Modbus read based on signal group config
                 let group_name = params.get("group_name")?.as_str()?;
                 let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
-                let (_reg_type, addr) = parse_register_address(&group.register_address)?;
-                Some(ModbusOp::ReadHolding {
-                    address: addr,
-                    count: group.register_count,
-                })
+                let (reg_type, addr) = parse_register_address(&group.register_address)?;
+                match reg_type {
+                    RegisterType::Coil => Some(ModbusOp::ReadCoil { address: addr, count: group.register_count }),
+                    RegisterType::Discrete => Some(ModbusOp::ReadDiscrete { address: addr, count: group.register_count }),
+                    RegisterType::Input => Some(ModbusOp::ReadInput { address: addr, count: group.register_count }),
+                    RegisterType::Holding => Some(ModbusOp::ReadHolding { address: addr, count: group.register_count }),
+                }
             }
             Operation::WriteSignalGroup => {
                 // WriteSignalGroup maps to a Modbus write based on signal group config

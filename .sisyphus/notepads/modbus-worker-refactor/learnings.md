@@ -235,3 +235,41 @@ Original code in profiles/device_profile.rs is preserved (will be removed in lat
 - All 9 tests pass
 - cargo build succeeds (warnings only, no errors)
 - No new warnings introduced in operations.rs
+
+---
+
+## Task 8: Create main ModbusWorker in mod.rs
+
+### What was done
+1. Created ModbusWorker struct in mod.rs using extracted types:
+   - Uses `Backoff`, `TimeoutHandler` from types.rs
+   - Uses `ModbusClient`, `ModbusOp`, `OperationResult`, `QueuedOperation` from client.rs
+   - Uses `RegisterType`, `parse_register_address` from operations.rs
+   - Re-exports `parse_signal_group_fields`, `ParsedField` from parsing.rs
+
+2. Implemented Worker trait with:
+   - All 4 register types supported via RegisterType enum
+   - MoveTo operation returns "not implemented" error
+   - GetStatus returns device connection status
+   - ReadSignalGroup and WriteSignalGroup operations
+
+3. Made fields/methods public for testing:
+   - `Backoff.attempts`, `Backoff.next_delay_ms` made public
+   - `OperationQueue.push`, `can_start`, `start_next`, `complete`, `pending_count`, `in_flight_count` made public
+   - `ModbusClient.endpoint`, `connection`, `unit_id` made public
+
+4. Preserved all tests from original modbus_worker.rs
+
+### Test results
+- 55 tests passed in workers::modbus module
+- Includes tests from types.rs, client.rs, operations.rs, parsing.rs, and mod.rs
+
+### Key patterns
+- Use `use types::{Backoff, TimeoutHandler}` for internal types
+- Use `pub use` for re-exporting types from submodules
+- Make struct fields public with `pub` for testing
+- Use `OperationQueue` alias for cleaner code
+
+### Verification
+- cargo test --lib workers::modbus: 55 tests passed
+- cargo check --lib: 0 errors, 4 warnings (pre-existing)
