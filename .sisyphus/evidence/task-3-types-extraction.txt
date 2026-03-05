@@ -1,0 +1,33 @@
+# Task 3: Extract types.rs from modbus_worker.rs
+
+## Summary
+Extracted 5 types from src/workers/modbus_worker.rs into src/workers/modbus/types.rs
+
+## Types Extracted
+1. TransactionId (struct) - Global atomic counter for tracking operations
+2. ConnectionState (enum) - Connection state machine (Disconnected, Connecting, Connected)
+3. Backoff (struct) - Exponential backoff with jitter (100ms base, 30s max)
+4. TimeoutHandler (struct) - Adaptive timeout (1s base, 30s max, doubles on failure)
+5. OperationQueue<T> (generic struct) - Limits concurrent operations
+
+## Tests
+All 8 unit tests pass:
+- transaction_id_increments
+- transaction_id_has_timestamp
+- backoff_new_starts_at_base_delay
+- backoff_next_delay_is_exponential_and_capped
+- backoff_reset_restores_initial_state
+- operation_queue_limits_concurrency_and_tracks_in_flight
+- operation_queue_complete_allows_next_queued_operation
+- operation_queue_complete_is_saturating_at_zero
+
+## Build
+cargo build succeeds with warnings only (no errors)
+
+## Modifications
+- Created: src/workers/modbus/types.rs
+- Updated: src/workers/modbus/mod.rs (added re-export of ConnectionState, OperationQueue, TransactionId)
+
+## Notes
+- Fixed pre-existing test compilation errors in data_conversion.rs (trait method calling convention)
+- Tests use TestOperation wrapper instead of QueuedOperation since ModbusOp wasn't extracted

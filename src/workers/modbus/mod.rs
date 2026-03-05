@@ -9,3 +9,5 @@ pub mod parsing;
 pub use types::{ConnectionState, OperationQueue, TransactionId};
 
 pub use client::{ModbusClient, ModbusOp, OperationResult, QueuedOperation};
+pub use operations::{parse_register_address, RegisterType};
+pub use parsing::{parse_signal_group_fields, ParsedField};

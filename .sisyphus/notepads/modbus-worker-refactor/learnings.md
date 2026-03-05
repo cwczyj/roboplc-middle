@@ -134,3 +134,104 @@ Added 19 comprehensive tests:
 - lsp_diagnostics: No diagnostics in modbus_worker.rs
 - All 19 parse tests pass
 - Full project compiles (warnings only, no errors)
+
+
+## Task 4: Extract ModbusClient to client.rs
+
+### What was done
+1. Created src/workers/modbus/client.rs with:
+   - ModbusOp enum (extracted from modbus_worker.rs lines 201-206)
+   - OperationResult struct (lines 209-214)
+   - QueuedOperation struct (lines 217-221)
+   - ModbusClient struct and impl (lines 225-419)
+   - Test: modbus_client_new_starts_disconnected
+
+2. Fixed imports:
+   - Added `use roboplc::comm::tcp;` (was missing)
+   - Added `use roboplc::io::IoMapping;` (required for read/write trait methods)
+   - Made OperationResult and QueuedOperation public for export
+
+### Key findings
+- roboplc::comm::tcp module must be imported explicitly
+- IoMapping trait is required in scope to use read/write methods on ModbusMapping
+- Structs must be explicitly `pub` to be re-exported via `pub use`
+
+
+---
+
+## Task 1 (Wave 2): Create data_conversion.rs module
+
+### What was done
+Created new module `src/data_conversion.rs` with:
+- `DataTypeConverter` trait (moved from profiles/device_profile.rs)
+- `DefaultDataTypeConverter` struct with implementation
+- `RegisterPair` struct
+- Helper functions: `convert_byte_order()`, `bytes_len()`
+- 17 comprehensive unit tests
+
+### Key patterns discovered
+- Trait methods are NOT `&self` methods - they're static/associated functions
+- This required using fully-qualified syntax in tests: `<DefaultDataTypeConverter as DataTypeConverter>::from_bytes(...)`
+- Module declared in lib.rs: `pub mod data_conversion;`
+- Tests need `use crate::config::{ByteOrder, DataType};` to access types
+
+### Verification
+- All 17 tests pass
+- Project builds successfully
+- Pre-existing warnings/errors in other files (unrelated to this task)
+
+### Note
+Original code in profiles/device_profile.rs is preserved (will be removed in later task)
+
+
+---
+
+## Task 5 (Wave 3): Create operations.rs with RegisterType enum
+
+### What was done
+1. Created `src/workers/modbus/operations.rs` with:
+   - `RegisterType` enum with 4 variants: Coil, Discrete, Input, Holding
+   - `RegisterType::prefix()` method returning the character prefix
+   - `RegisterType::Display` implementation for user-friendly output
+   - `parse_register_address()` function that parses address strings like "h100", "c0", "i50", "d5"
+   - 9 comprehensive unit tests covering all parsing cases
+
+2. Updated `src/workers/modbus/mod.rs`:
+   - Added `pub use operations::{parse_register_address, RegisterType};` for re-export
+
+### RegisterType enum design
+- Matches RoboPLC's ModbusRegisterKind from profiles/device_profile.rs (lines 14-19)
+- Uses shorter variant names: Coil, Discrete, Input, Holding
+- Derives Debug, Clone, Copy, PartialEq, Eq for comparison and copying
+- Each variant has associated prefix character: 'c', 'd', 'i', 'h'
+
+### parse_register_address() design
+- Returns `Option<(RegisterType, u16)>` - register type and address number
+- Handles both uppercase and lowercase prefixes (H/h, I/i, C/c, D/d)
+- Defaults to Holding if no prefix is provided
+- Returns None for empty strings or invalid numbers
+- Trims whitespace before parsing
+
+### Test coverage
+- `parse_coil_address_with_c_prefix` - tests c/C prefix
+- `parse_discrete_address_with_d_prefix` - tests d/D prefix
+- `parse_input_address_with_i_prefix` - tests i/I prefix
+- `parse_holding_address_with_h_prefix` - tests h/H prefix
+- `parse_address_without_prefix_defaults_to_holding` - tests default behavior
+- `parse_empty_address_returns_none` - tests empty/whitespace strings
+- `parse_invalid_number_returns_none` - tests invalid numeric values
+- `register_type_display` - tests Display trait
+- `register_type_prefix` - tests prefix() method
+
+### Key patterns
+- Module-level documentation with `//!` comments
+- Public enum with documentation comments for each variant
+- Implementation blocks organized after type definition
+- Comprehensive doc comments with examples for public functions
+- Unit tests in `#[cfg(test)]` module
+- Test names follow pattern: `parse_<description>` or `<type>_<method>`
+
+### Verification
+- All 9 tests pass
+- cargo build succeeds (warnings only, no errors)
+- No new warnings introduced in operations.rs

@@ -1,10 +1,6 @@
 {
   "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/modbus-worker-refactor.md",
-  "started_at": "2026-03-05T02:27:11.903Z",
-  "session_ids": [
-    "ses_3472fcc7dffefjlsRxpkD6PJNL",
-    "ses_3441b6b34ffeqL78tfk6Qlr3BC"
-  ],
-  "plan_name": "modbus-worker-refactor",
-  "agent": "atlas"
+  "started_at": "2026-03-05T07:43:52.393Z",
+  "session_ids": ["ses_34340baa8ffeo9xpOOnyhPiu3Z"],
+  "plan_name": "modbus-worker-refactor"
 }

@@ -1,0 +1,31 @@
+# Task 4 Evidence - Client Module Extraction
+
+## Date: 2026-03-05
+
+## Verification Commands
+```bash
+cargo build  # PASSED
+cargo test --lib workers::modbus::client  # PASSED (1 test)
+```
+
+## Test Output
+```
+running 1 test
+test workers::modbus::client::tests::modbus_client_new_starts_disconnected ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out
+```
+
+## Files Created/Modified
+- Created: src/workers/modbus/client.rs (full ModbusClient implementation)
+- Modified: src/workers/modbus/mod.rs (added pub use statements)
+
+## Exported Types
+- ModbusOp (pub enum)
+- OperationResult (pub struct)  
+- QueuedOperation (pub struct)
+- ModbusClient (pub struct)
+
+## Notes
+- Build passes with only pre-existing warnings (unrelated to this extraction)
+- Test passes for modbus_client_new_starts_disconnected
+- LSP diagnostics clean on client.rs
