@@ -17,6 +17,8 @@ pub enum ModbusOp {
     ReadHolding { address: u16, count: u16 },
     WriteSingle { address: u16, value: u16 },
     WriteMultiple { address: u16, values: Vec<u16> },
+    WriteSingleCoil { address: u16, value: bool },
+    WriteMultipleCoils { address: u16, values: Vec<bool> },
 }
 
 /// Result of a Modbus operation
@@ -96,20 +98,22 @@ impl ModbusClient {
         };
 
         match op {
-            ModbusOp::ReadCoil { address, count } => self.read_coil(&client, *address, *count),
-            ModbusOp::ReadDiscrete { address, count } => {
-                self.read_discrete(&client, *address, *count)
+            &ModbusOp::ReadCoil { address, count } => self.read_coil(&client, address, count),
+            &ModbusOp::ReadDiscrete { address, count } => {
+                self.read_discrete(&client, address, count)
             }
-            ModbusOp::ReadInput { address, count } => self.read_input(&client, *address, *count),
-            ModbusOp::ReadHolding { address, count } => {
-                self.read_holding(&client, *address, *count)
+            &ModbusOp::ReadInput { address, count } => self.read_input(&client, address, count),
+            &ModbusOp::ReadHolding { address, count } => {
+                self.read_holding(&client, address, count)
             }
-            ModbusOp::WriteSingle { address, value } => {
-                self.write_single(&client, *address, *value)
+            &ModbusOp::WriteSingle { address, value } => {
+                self.write_single(&client, address, value)
             }
-            ModbusOp::WriteMultiple { address, values } => {
-                self.write_multiple(&client, *address, values)
+            &ModbusOp::WriteMultiple { address, ref values } => {
+                self.write_multiple(&client, address, values)
             }
+            &ModbusOp::WriteSingleCoil { .. } => unimplemented!(),
+            &ModbusOp::WriteMultipleCoils { .. } => unimplemented!(),
         }
     }
 

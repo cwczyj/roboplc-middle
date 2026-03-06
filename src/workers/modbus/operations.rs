@@ -3,6 +3,8 @@
 //! This module provides the RegisterType enum and address parsing utilities
 //! for Modbus operations.
 
+use roboplc::io::modbus::prelude::ModbusRegisterKind;
+
 /// Represents the four main Modbus register types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterType {
@@ -24,6 +26,26 @@ impl RegisterType {
             RegisterType::Discrete => 'd',
             RegisterType::Input => 'i',
             RegisterType::Holding => 'h',
+        }
+    }
+
+    /// Returns true if this register type is read-only (Discrete or Input)
+    pub fn is_read_only(&self) -> bool {
+        matches!(self, RegisterType::Discrete | RegisterType::Input)
+    }
+
+    /// Returns true if this register type is writable (Coil or Holding)
+    pub fn is_writable(&self) -> bool {
+        matches!(self, RegisterType::Coil | RegisterType::Holding)
+    }
+
+    /// Convert to ModbusRegisterKind enum
+    pub fn to_modbus_register_kind(&self) -> ModbusRegisterKind {
+        match self {
+            RegisterType::Coil => ModbusRegisterKind::Coil,
+            RegisterType::Discrete => ModbusRegisterKind::Discrete,
+            RegisterType::Input => ModbusRegisterKind::Input,
+            RegisterType::Holding => ModbusRegisterKind::Holding,
         }
     }
 }
@@ -57,6 +79,7 @@ impl std::fmt::Display for RegisterType {
 ///
 /// # Examples
 /// ```
+/// use roboplc_middleware::workers::modbus::{RegisterType, parse_register_address};
 /// let (reg_type, addr) = parse_register_address("h100").unwrap();
 /// assert_eq!(reg_type, RegisterType::Holding);
 /// assert_eq!(addr, 100);
@@ -84,6 +107,16 @@ pub fn parse_register_address(addr_str: &str) -> Option<(RegisterType, u16)> {
     // Parse the numeric part
     let address = num_part.parse::<u16>().ok()?;
     Some((reg_type, address))
+}
+
+/// Convert RoboPLC's ModbusRegisterKind to our RegisterType
+pub fn register_type_from_kind(kind: ModbusRegisterKind) -> RegisterType {
+    match kind {
+        ModbusRegisterKind::Coil => RegisterType::Coil,
+        ModbusRegisterKind::Discrete => RegisterType::Discrete,
+        ModbusRegisterKind::Input => RegisterType::Input,
+        ModbusRegisterKind::Holding => RegisterType::Holding,
+    }
 }
 
 #[cfg(test)]
@@ -166,5 +199,72 @@ mod tests {
         assert_eq!(RegisterType::Discrete.prefix(), 'd');
         assert_eq!(RegisterType::Input.prefix(), 'i');
         assert_eq!(RegisterType::Holding.prefix(), 'h');
+    }
+
+    #[test]
+    fn register_type_is_read_only() {
+        // Discrete and Input are read-only
+        assert!(!RegisterType::Coil.is_read_only());
+        assert!(RegisterType::Discrete.is_read_only());
+        assert!(RegisterType::Input.is_read_only());
+        assert!(!RegisterType::Holding.is_read_only());
+    }
+
+    #[test]
+    fn register_type_is_writable() {
+        // Coil and Holding are writable
+        assert!(RegisterType::Coil.is_writable());
+        assert!(!RegisterType::Discrete.is_writable());
+        assert!(!RegisterType::Input.is_writable());
+        assert!(RegisterType::Holding.is_writable());
+    }
+
+    #[test]
+    fn register_type_to_modbus_register_kind() {
+        //! Modbus operation types and utilities
+        //!
+        //! This module provides the RegisterType enum and address parsing utilities
+        //! for Modbus operations.
+
+        use roboplc::io::modbus::prelude::ModbusRegisterKind;
+
+        assert_eq!(
+            RegisterType::Coil.to_modbus_register_kind(),
+            ModbusRegisterKind::Coil
+        );
+        assert_eq!(
+            RegisterType::Discrete.to_modbus_register_kind(),
+            ModbusRegisterKind::Discrete
+        );
+        assert_eq!(
+            RegisterType::Input.to_modbus_register_kind(),
+            ModbusRegisterKind::Input
+        );
+        assert_eq!(
+            RegisterType::Holding.to_modbus_register_kind(),
+            ModbusRegisterKind::Holding
+        );
+    }
+
+    #[test]
+    fn register_type_from_kind_converts_correctly() {
+        use roboplc::io::modbus::prelude::ModbusRegisterKind;
+
+        assert_eq!(
+            register_type_from_kind(ModbusRegisterKind::Coil),
+            RegisterType::Coil
+        );
+        assert_eq!(
+            register_type_from_kind(ModbusRegisterKind::Discrete),
+            RegisterType::Discrete
+        );
+        assert_eq!(
+            register_type_from_kind(ModbusRegisterKind::Input),
+            RegisterType::Input
+        );
+        assert_eq!(
+            register_type_from_kind(ModbusRegisterKind::Holding),
+            RegisterType::Holding
+        );
     }
 }

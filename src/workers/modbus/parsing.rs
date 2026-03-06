@@ -44,8 +44,8 @@ pub struct ParsedField {
 /// # Examples
 ///
 /// ```
-/// use crate::config::{ByteOrder, DataType, FieldMapping};
-/// use crate::workers::modbus::parsing::parse_signal_group_fields;
+/// use roboplc_middleware::config::{ByteOrder, DataType, FieldMapping};
+/// use roboplc_middleware::workers::modbus::parsing::parse_signal_group_fields;
 ///
 /// // Registers read from device
 /// let registers = vec![0x1234, 0x5678];
