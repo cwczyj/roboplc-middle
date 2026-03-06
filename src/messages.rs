@@ -149,7 +149,6 @@ pub enum Operation {
     // Signal group operations (for device profiles)
     ReadSignalGroup,
     WriteSignalGroup,
-    MoveTo,
     GetStatus,
 }
 
@@ -199,15 +198,6 @@ mod tests {
     }
 
     #[test]
-    fn test_operation_move_to_serialization() {
-        let op = Operation::MoveTo;
-        let json = serde_json::to_string(&op).unwrap();
-        assert!(json.contains("MoveTo"));
-        let decoded: Operation = serde_json::from_str(&json).unwrap();
-        assert!(matches!(decoded, Operation::MoveTo));
-    }
-
-    #[test]
     fn test_operation_get_status_serialization() {
         let op = Operation::GetStatus;
         let json = serde_json::to_string(&op).unwrap();
@@ -253,20 +243,4 @@ mod tests {
         assert!(matches!(cloned, Message::DeviceControl { .. }));
     }
 
-    #[test]
-    fn test_device_control_clone_with_move_to() {
-        let msg = Message::DeviceControl {
-            device_id: "test-device".to_string(),
-            operation: Operation::MoveTo,
-            params: serde_json::json!({ "position": [10.0, 20.0, 30.0] }),
-            correlation_id: 789,
-            respond_to: None,
-        };
-        // Verify message can be cloned (required for Hub)
-        let cloned = msg.clone();
-        assert!(matches!(cloned, Message::DeviceControl { .. }));
-        if let Message::DeviceControl { ref operation, .. } = cloned {
-            assert!(matches!(operation, Operation::MoveTo));
-        }
-    }
 }

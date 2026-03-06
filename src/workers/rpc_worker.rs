@@ -73,10 +73,6 @@ enum RpcMethod<'a> {
         group_name: String,
         data: JsonValue,
     },
-    MoveTo {
-        device_id: &'a str,
-        position: String,
-    },
 }
 
 // ---------------------------------------------------------------------------
@@ -203,13 +199,6 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
             } => {
                 let params = serde_json::json!({ "group_name": group_name, "data": data });
                 self.send_device_control(device_id, Operation::WriteSignalGroup, params)
-            }
-            RpcMethod::MoveTo {
-                device_id,
-                position,
-            } => {
-                let params = serde_json::json!({ "position": position });
-                self.send_device_control(device_id, Operation::MoveTo, params)
             }
         }
     }

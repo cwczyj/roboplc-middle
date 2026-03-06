@@ -24,6 +24,15 @@ struct RegisterData {
     values: Vec<u16>,
 }
 
+// ==================== WriteValue ====================
+
+/// Unified value type for Modbus write operations
+#[derive(Debug, Clone, PartialEq)]
+pub enum WriteValue {
+    Coil(bool),
+    Holding(u16),
+}
+
 // ==================== ModbusOp ====================
 
 #[derive(Debug, Clone)]
@@ -361,6 +370,101 @@ impl ModbusClient {
             },
         }
     }
+
+    /// Unified write method that handles both Coil and Holding registers
+    /// with automatic FC (Function Code) selection based on value count.
+    ///
+    /// # Arguments
+    /// * `client` - The Modbus client connection
+    /// * `address` - Starting register address
+    /// * `values` - Slice of WriteValue enum (Coil or Holding)
+    ///
+    /// # Returns
+    /// * `OperationResult` - Success/failure with latency info
+    ///
+    /// # Errors
+    /// * Empty values slice
+    /// * Mixed Coil and Holding types (values must be homogeneous)
+    ///
+    /// # FC Selection
+    /// * Single value: FC05 (Write Single Coil) or FC06 (Write Single Holding)
+    /// * Multiple values: FC15 (Write Multiple Coils) or FC16 (Write Multiple Holdings)
+    pub fn write_registers(
+        &self,
+        client: &Client,
+        address: u16,
+        values: &[WriteValue],
+    ) -> OperationResult {
+        // Validate: values must not be empty
+        if values.is_empty() {
+            return OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Cannot write empty values slice".to_string()),
+            };
+        }
+
+        // Validate: values must be homogeneous (all Coil or all Holding)
+        let first_kind = &values[0];
+        let all_same_kind = values.iter().all(|v| {
+            matches!(
+                (first_kind, v),
+                (WriteValue::Coil(_), WriteValue::Coil(_))
+                    | (WriteValue::Holding(_), WriteValue::Holding(_))
+            )
+        });
+
+        if !all_same_kind {
+            return OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some(
+                    "Cannot mix Coil and Holding types in single write operation".to_string(),
+                ),
+            };
+        }
+
+        // Dispatch to appropriate write method based on kind and count
+        match first_kind {
+            WriteValue::Coil(_) => {
+                // Extract bool values
+                let coil_values: Vec<bool> = values
+                    .iter()
+                    .filter_map(|v| match v {
+                        WriteValue::Coil(b) => Some(*b),
+                        WriteValue::Holding(_) => None, // Already validated as homogeneous
+                    })
+                    .collect();
+
+                if coil_values.len() == 1 {
+                    // FC05: Write Single Coil
+                    self.write_single_coil(client, address, coil_values[0])
+                } else {
+                    // FC15: Write Multiple Coils
+                    self.write_multiple_coils(client, address, &coil_values)
+                }
+            }
+            WriteValue::Holding(_) => {
+                // Extract u16 values
+                let holding_values: Vec<u16> = values
+                    .iter()
+                    .filter_map(|v| match v {
+                        WriteValue::Holding(u) => Some(*u),
+                        WriteValue::Coil(_) => None, // Already validated as homogeneous
+                    })
+                    .collect();
+
+                if holding_values.len() == 1 {
+                    // FC06: Write Single Holding
+                    self.write_single(client, address, holding_values[0])
+                } else {
+                    // FC16: Write Multiple Holdings
+                    self.write_multiple(client, address, &holding_values)
+                }
+            }
+        }
+    }
+
 }
 
 // ==================== Tests ====================

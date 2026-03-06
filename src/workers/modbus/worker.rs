@@ -287,7 +287,7 @@ impl ModbusWorker {
                     }
                 }
             }
-            Operation::MoveTo | Operation::GetStatus => {
+            Operation::GetStatus => {
                 // These operations are not directly Modbus operations
                 // They are handled separately in the run() method
                 None
@@ -379,16 +379,6 @@ impl Worker<Message, Variables> for ModbusWorker {
                             success: true,
                             data: status,
                             error: None,
-                            correlation_id,
-                        });
-                    }
-                    Operation::MoveTo => {
-                        // MoveTo is not supported for Modbus devices (PLC)
-                        context.hub().send(Message::DeviceResponse {
-                            device_id: self.device.id.clone(),
-                            success: false,
-                            data: JsonValue::Null,
-                            error: Some("Operation not supported".to_string()),
                             correlation_id,
                         });
                     }

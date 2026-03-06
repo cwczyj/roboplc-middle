@@ -242,55 +242,6 @@ pub async fn batch_operations(
     })))
 }
 
-/// Request body for robot arm movement
-#[derive(Debug, Deserialize, Serialize)]
-pub struct MoveRequest {
-    /// Target position (e.g., "home", "pick", "place", or coordinates)
-    pub position: String,
-    /// Optional speed (0-100)
-    /// Option<u8> 表示可能有也可能没有值
-    /// u8 是 8 位无符号整数（0 到 255）
-    #[serde(default)]
-    pub speed: Option<u8>,
-}
-
-/// POST /api/devices/{id}/move
-///
-/// 移动机械臂到指定位置
-pub async fn move_to(
-    path: web::Path<String>,
-    data: web::Data<AppState>,
-    body: web::Json<MoveRequest>,
-) -> Result<HttpResponse> {
-    let device_id = path.into_inner();
-    let request = body.into_inner();
-
-    // Create DeviceControl message
-    let message = Message::DeviceControl {
-        device_id: device_id.clone(),
-        operation: Operation::MoveTo,
-        params: json!({
-            "position": request.position,
-            // unwrap_or(100) 如果 Option 是 Some，返回值；如果是 None，返回默认值 100
-            "speed": request.speed.unwrap_or(100),
-        }),
-        correlation_id: next_correlation_id(),
-        respond_to: None,
-    };
-
-    // Send via Hub if available
-    if let Some(ref sender) = data.hub_sender {
-        let _ = sender.send(message);
-    }
-
-    Ok(HttpResponse::Ok().json(json!({
-        "device_id": device_id,
-        "operation": "move_to",
-        "position": request.position,
-        "status": "sent"
-    })))
-}
-
 /// Configure routes for the HTTP API
 ///
 /// Sets up all endpoint routes for the actix-web server.
@@ -305,7 +256,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/api/devices/{id}", web::get().to(get_device_by_id))
         .route("/api/devices/{id}/register", web::post().to(set_register))
         .route("/api/devices/{id}/batch", web::post().to(batch_operations))
-        .route("/api/devices/{id}/move", web::post().to(move_to))
         .route("/api/health", web::get().to(get_health))
         .route("/api/config", web::get().to(get_config))
         .route("/api/config/reload", web::post().to(reload_config));
@@ -354,24 +304,6 @@ mod tests {
         let req: BatchOperationRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.read.len(), 2);
         assert_eq!(req.write.len(), 1);
-    }
-
-    #[test]
-    fn test_move_request_parse() {
-        let json = r#"{"position": "home", "speed": 50}"#;
-        let req: MoveRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.position, "home");
-        // 比较 Option<u8> 和 Some(50)
-        assert_eq!(req.speed, Some(50));
-    }
-
-    #[test]
-    fn test_move_request_default_speed() {
-        // 这个 JSON 缺少 speed 字段，应该使用默认值 None
-        let json = r#"{"position": "pick"}"#;
-        let req: MoveRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.position, "pick");
-        assert_eq!(req.speed, None);
     }
 
     // #[tokio::test] 是异步测试的属性宏
@@ -428,31 +360,6 @@ mod tests {
 
         let result = batch_operations(
             web::Path::from("test-device".to_string()),
-            app_state,
-            web::Json(req_body),
-        )
-        .await;
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_move_to_handler() {
-        let device_states: Arc<RwLock<HashMap<String, DeviceStatus>>> =
-            Arc::new(RwLock::new(HashMap::new()));
-        let state = AppState {
-            device_states,
-            hub_sender: None,
-        };
-        let app_state = web::Data::new(state);
-
-        let req_body = MoveRequest {
-            position: "home".to_string(),
-            speed: Some(75),  // Some() 创建 Option 的 Some 变体
-        };
-
-        let result = move_to(
-            web::Path::from("robot-arm-1".to_string()),
             app_state,
             web::Json(req_body),
         )
