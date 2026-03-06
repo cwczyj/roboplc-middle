@@ -286,6 +286,24 @@ src/
 - `anyhow`: Error context
 - `tracing`: Structured logging
 
+## Where to Look
+
+| Task | Location | See Also |
+|------|----------|----------|
+| Add a new worker | `src/workers/<name>.rs` | [workers/AGENTS.md](src/workers/AGENTS.md) |
+| Worker registration | `src/main.rs` lines 102-119 | [workers/AGENTS.md](src/workers/AGENTS.md) |
+| Modbus protocol changes | `src/workers/modbus/` | [modbus/AGENTS.md](src/workers/modbus/AGENTS.md) |
+| Message routing logic | `src/workers/manager.rs` | [workers/AGENTS.md](src/workers/AGENTS.md) |
+| Add new test | `tests/<type>_tests.rs` | [tests/AGENTS.md](tests/AGENTS.md) |
+| Config parsing | `src/config.rs` | - |
+| Shared state types | `src/lib.rs` `Variables` | - |
+| Message types | `src/messages.rs` | - |
+
+## Module Guides
+
+- **[workers/AGENTS.md](src/workers/AGENTS.md)** - Worker patterns, Hub communication, RT scheduling
+- **[modbus/AGENTS.md](src/workers/modbus/AGENTS.md)** - Modbus TCP protocol, connection management
+- **[tests/AGENTS.md](tests/AGENTS.md)** - Testing patterns, mock servers, test organization
 ## Configuration
 
 Configuration is loaded from `config.toml` in the working directory. See `config.sample.toml` for schema.
