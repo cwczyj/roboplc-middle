@@ -1,7 +1,7 @@
 //! Functional tests for worker behavior using public APIs
 
 use roboplc_middleware::config::{AddressingMode, ByteOrder, Device, DeviceType};
-use roboplc_middleware::workers::modbus_worker::{ConnectionState, ModbusWorker, TransactionId};
+use roboplc_middleware::workers::modbus::{ConnectionState, ModbusWorker, TransactionId};
 use std::time::Duration;
 
 fn test_device() -> Device {

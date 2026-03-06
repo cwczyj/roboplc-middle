@@ -12,9 +12,10 @@
 
 use crate::config::{ByteOrder, DataType, FieldMapping};
 use crate::data_conversion::DataTypeConverter;
+use serde::Serialize;
 
 /// Parsed field value from a SignalGroup
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParsedField {
     /// Field name from configuration
     pub name: String,

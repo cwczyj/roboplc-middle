@@ -46,7 +46,7 @@ fn verify_workers_can_be_created(
 ) {
     use roboplc_middleware::workers::{
         config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
-        manager::DeviceManager, modbus_worker::ModbusWorker, rpc_worker::RpcWorker,
+        manager::DeviceManager, modbus::ModbusWorker, rpc_worker::RpcWorker,
     };
 
     let _rpc_worker = RpcWorker::new(config.clone());
@@ -153,7 +153,7 @@ heartbeat_interval_sec = 30
 
     assert_eq!(config.devices.len(), 2);
 
-    use roboplc_middleware::workers::modbus_worker::ModbusWorker;
+    use roboplc_middleware::workers::modbus::ModbusWorker;
     for device in &config.devices {
         let _worker = ModbusWorker::new(device.clone());
     }
@@ -188,7 +188,7 @@ fn test_worker_types_instantiate_correctly() {
     use roboplc_middleware::config::Config;
     use roboplc_middleware::workers::{
         config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
-        manager::DeviceManager, modbus_worker::ModbusWorker, rpc_worker::RpcWorker,
+        manager::DeviceManager, modbus::ModbusWorker, rpc_worker::RpcWorker,
     };
 
     let config_file = create_test_config(8882, 8883, 5021);
@@ -631,7 +631,7 @@ fn test_error_response_preserves_correlation_id() {
 /// Test: ModbusWorker can be created with device from config
 #[test]
 fn test_modbus_worker_creation_from_config() {
-    use roboplc_middleware::workers::modbus_worker::ModbusWorker;
+    use roboplc_middleware::workers::modbus::ModbusWorker;
 
     let mock_server = MockModbusServer::start(MockModbusConfig::default()).unwrap();
     let modbus_port = mock_server.port();

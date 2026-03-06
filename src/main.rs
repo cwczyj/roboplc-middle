@@ -33,7 +33,7 @@ use roboplc_middleware::{
     config::Config,
     workers::{
         config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
-        manager::DeviceManager, modbus_worker::ModbusWorker, rpc_worker::RpcWorker,
+        manager::DeviceManager, modbus::ModbusWorker, rpc_worker::RpcWorker,
     },
     Message, Variables,
 };

@@ -91,17 +91,8 @@ pub mod http_worker;
 pub mod manager;
 
 pub mod modbus;
-/// Modbus TCP Worker
-///
-/// 职责：管理单个设备的 Modbus TCP 连接
-/// 特点：每个设备对应一个独立的 ModbusWorker
-/// 功能：
-/// - 建立和维护 Modbus TCP 连接
-/// - 执行读写寄存器操作
-/// - 心跳检测和延迟监控
-/// - 自动重连（指数退避策略）
-/// 对应文件：`modbus_worker.rs`
-pub mod modbus_worker;
+
+// ========== 支持性 Workers ==========
 
 // ========== 支持性 Workers ==========
 

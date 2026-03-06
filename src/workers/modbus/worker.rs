@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
-    encode_fields_to_registers, parse_register_address, Backoff, ConnectionState, ModbusClient,
-    ModbusOp, OperationQueue, OperationResult, QueuedOperation, RegisterType, TimeoutHandler,
-    TransactionId,
+    encode_fields_to_registers, parse_register_address, parse_signal_group_fields, Backoff,
+    ConnectionState, ModbusClient, ModbusOp, OperationQueue, OperationResult, QueuedOperation,
+    RegisterType, TimeoutHandler, TransactionId,
 };
 
 // ==================== ModbusWorker ====================
@@ -221,28 +221,71 @@ impl ModbusWorker {
                     .signal_groups
                     .iter()
                     .find(|g| g.name == group_name)?;
-                let addr = self.parse_address(&group.register_address)?;
-                let values = if let Some(fields_data) =
-                    params.get("data").and_then(|v| v.as_object())
-                {
-                    encode_fields_to_registers(
-                        fields_data,
-                        &group.fields,
-                        group.register_count,
-                        self.device.byte_order.clone(),
-                    )?
-                } else if let Some(raw_values) = params.get("values").and_then(|v| v.as_array()) {
-                    raw_values
-                        .iter()
-                        .filter_map(|v| v.as_u64().map(|n| n as u16))
-                        .collect()
-                } else {
-                    return None;
-                };
-                Some(ModbusOp::WriteMultiple {
-                    address: addr,
-                    values,
-                })
+                let (reg_type, addr) = parse_register_address(&group.register_address)?;
+                
+                match reg_type {
+                    RegisterType::Discrete | RegisterType::Input => {
+                        // Read-only registers - cannot write
+                        None
+                    }
+                    RegisterType::Coil => {
+                        // Coil write: convert values to bool
+                        let values: Vec<bool> = if let Some(fields_data) =
+                            params.get("data").and_then(|v| v.as_object())
+                        {
+                            let regs = encode_fields_to_registers(
+                                fields_data,
+                                &group.fields,
+                                group.register_count,
+                                self.device.byte_order.clone(),
+                            )?;
+                            regs.iter().map(|&v| v != 0).collect()
+                        } else if let Some(raw_values) = params.get("values").and_then(|v| v.as_array()) {
+                            raw_values
+                                .iter()
+                                .filter_map(|v| v.as_u64().map(|n| n != 0))
+                                .collect()
+                        } else {
+                            return None;
+                        };
+                        
+                        if values.len() == 1 {
+                            Some(ModbusOp::WriteSingleCoil {
+                                address: addr,
+                                value: values[0],
+                            })
+                        } else {
+                            Some(ModbusOp::WriteMultipleCoils {
+                                address: addr,
+                                values,
+                            })
+                        }
+                    }
+                    RegisterType::Holding => {
+                        // Holding register write (existing logic)
+                        let values = if let Some(fields_data) =
+                            params.get("data").and_then(|v| v.as_object())
+                        {
+                            encode_fields_to_registers(
+                                fields_data,
+                                &group.fields,
+                                group.register_count,
+                                self.device.byte_order.clone(),
+                            )?
+                        } else if let Some(raw_values) = params.get("values").and_then(|v| v.as_array()) {
+                            raw_values
+                                .iter()
+                                .filter_map(|v| v.as_u64().map(|n| n as u16))
+                                .collect()
+                        } else {
+                            return None;
+                        };
+                        Some(ModbusOp::WriteMultiple {
+                            address: addr,
+                            values,
+                        })
+                    }
+                }
             }
             Operation::MoveTo | Operation::GetStatus => {
                 // These operations are not directly Modbus operations
@@ -354,6 +397,15 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .get("group_name")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
+                        
+                        // Clone group data to avoid borrow conflicts
+                        let group_data = self
+                            .device
+                            .signal_groups
+                            .iter()
+                            .find(|g| g.name == group_name)
+                            .map(|g| (g.fields.clone(), self.device.byte_order.clone()));
+                        
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
                             let result = if let Some(client) = &mut self.client {
                                 client.execute_operation(&modbus_op)
@@ -370,13 +422,54 @@ impl Worker<Message, Variables> for ModbusWorker {
                             {
                                 self.record_communication(context, latency);
                             }
+                            
+                            // Parse fields from the register values
+                            let response_data = if let Some((fields, byte_order)) = group_data {
+                                if result.success {
+                                    if let Some(values) = result.data.get("values").and_then(|v| v.as_array()) {
+                                        // Convert JSON values to u16 registers
+                                        let registers: Vec<u16> = values
+                                            .iter()
+                                            .filter_map(|v| v.as_u64().map(|n| n as u16))
+                                            .collect();
+                                        
+                                        // Parse fields using the signal group configuration
+                                        let parsed_fields = parse_signal_group_fields(
+                                            &registers,
+                                            &fields,
+                                            byte_order,
+                                        );
+                                        
+                                        serde_json::json!({
+                                            "group_name": group_name,
+                                            "result": {
+                                                "fields": parsed_fields,
+                                                "latency_us": result.data.get("latency_us").unwrap_or(&JsonValue::Null)
+                                            }
+                                        })
+                                    } else {
+                                        serde_json::json!({
+                                            "group_name": group_name,
+                                            "result": result.data
+                                        })
+                                    }
+                                } else {
+                                    serde_json::json!({
+                                        "group_name": group_name,
+                                        "result": result.data
+                                    })
+                                }
+                            } else {
+                                serde_json::json!({
+                                    "group_name": group_name,
+                                    "result": result.data
+                                })
+                            };
+                            
                             context.hub().send(Message::DeviceResponse {
                                 device_id: self.device.id.clone(),
                                 success: result.success,
-                                data: serde_json::json!({
-                                    "group_name": group_name,
-                                    "result": result.data
-                                }),
+                                data: response_data,
                                 error: result.error,
                                 correlation_id,
                             });
