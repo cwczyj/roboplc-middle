@@ -1,9 +1,9 @@
 {
-  "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/modbus-refactor.md",
-  "started_at": "2026-03-06T03:15:44.840Z",
+  "active_plan": "/home/lipschitz/Documents/Code/RustCode/.sisyphus/plans/modbus-cleanup-refactor.md",
+  "started_at": "2026-03-06T06:34:15.482Z",
   "session_ids": [
-    "ses_33f0347d3ffeIUEaoJraNksmXO"
+    "ses_33e2563efffexsFeOSi1ioHwec"
   ],
-  "plan_name": "modbus-refactor",
+  "plan_name": "modbus-cleanup-refactor",
   "agent": "atlas"
 }
