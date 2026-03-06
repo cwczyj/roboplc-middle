@@ -95,11 +95,13 @@ pub fn parse_signal_group_fields(
         let bytes = extract_bytes_from_registers(registers, field.offset as usize, byte_count);
 
         // Convert bytes to f64 using DataTypeConverter
-        if let Some(value) = <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
-            &bytes,
-            field.data_type.clone(),
-            byte_order.clone(),
-        ) {
+        if let Some(value) =
+            <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+                &bytes,
+                field.data_type.clone(),
+                byte_order.clone(),
+            )
+        {
             results.push(ParsedField {
                 name: field.name.clone(),
                 value,
@@ -109,6 +111,82 @@ pub fn parse_signal_group_fields(
     }
 
     results
+}
+
+/// Encode field values to register values
+///
+/// This function converts field values to Modbus register values using
+/// the DataTypeConverter. It's the inverse of parse_signal_group_fields.
+///
+/// # Arguments
+///
+/// * `fields_data` - Map of field name to value
+/// * `fields` - Field mappings defining how to encode each field
+/// * `register_count` - Total number of registers in the signal group
+/// * `byte_order` - Byte order for multi-register types
+///
+/// # Returns
+///
+/// Vec<u16> with register values ready for Modbus write.
+/// Returns None if a field name is not found in the mapping.
+pub fn encode_fields_to_registers(
+    fields_data: &serde_json::Map<String, serde_json::Value>,
+    fields: &[FieldMapping],
+    register_count: u16,
+    byte_order: ByteOrder,
+) -> Option<Vec<u16>> {
+    // Initialize register array with zeros
+    let mut registers = vec![0u16; register_count as usize];
+
+    // Process each field in the input data
+    for (field_name, field_value) in fields_data {
+        // Find the field mapping
+        let field = fields.iter().find(|f| &f.name == field_name)?;
+
+        // Convert JSON value to f64
+        let value = field_value.as_f64()?;
+
+        // Convert value to bytes using DataTypeConverter
+        let bytes =
+            <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+                value,
+                field.data_type.clone(),
+                byte_order.clone(),
+            )?;
+
+        // Calculate required registers
+        let required_registers = field.data_type.required_registers();
+        let end_offset = field.offset.saturating_add(required_registers);
+
+        // Check bounds
+        if end_offset > register_count {
+            return None;
+        }
+
+        // Convert bytes to registers and place at offset
+        let regs = bytes_to_registers(&bytes);
+        for (i, reg) in regs.into_iter().enumerate() {
+            registers[field.offset as usize + i] = reg;
+        }
+    }
+
+    Some(registers)
+}
+
+/// Convert bytes to u16 register values
+fn bytes_to_registers(bytes: &[u8]) -> Vec<u16> {
+    let mut registers = Vec::new();
+    let mut iter = bytes.iter();
+
+    while let Some(&high) = iter.next() {
+        if let Some(&low) = iter.next() {
+            registers.push(((high as u16) << 8) | (low as u16));
+        } else {
+            registers.push(high as u16);
+        }
+    }
+
+    registers
 }
 
 /// Extract bytes from register array at specified offset
@@ -380,7 +458,8 @@ mod tests {
         let registers = vec![0x1234, 0x5678];
         let fields = vec![make_field("swapped", DataType::U32, 0)];
 
-        let parsed = parse_signal_group_fields(&registers, &fields, ByteOrder::LittleEndianByteSwap);
+        let parsed =
+            parse_signal_group_fields(&registers, &fields, ByteOrder::LittleEndianByteSwap);
 
         assert_eq!(parsed.len(), 1);
         // After swap and big-endian interpretation: 0x34127856 = 873625686
@@ -400,5 +479,58 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         // After swap and big-endian interpretation: 0x56781234 = 1450709556
         assert_eq!(parsed[0].value, 1450709556.0);
+    }
+
+    #[test]
+    fn encode_fields_to_registers_u16() {
+        let mut data = serde_json::Map::new();
+        data.insert("value".to_string(), serde_json::json!(4660));
+
+        let fields = vec![make_field("value", DataType::U16, 0)];
+
+        let result = encode_fields_to_registers(&data, &fields, 2, ByteOrder::BigEndian);
+        assert!(result.is_some());
+
+        let registers = result.unwrap();
+        assert_eq!(registers, vec![4660, 0]);
+    }
+
+    #[test]
+    fn encode_fields_to_registers_f32() {
+        let mut data = serde_json::Map::new();
+        data.insert("pi".to_string(), serde_json::json!(3.14159));
+
+        let fields = vec![make_field("pi", DataType::F32, 0)];
+
+        let result = encode_fields_to_registers(&data, &fields, 2, ByteOrder::BigEndian);
+        assert!(result.is_some());
+
+        let registers = result.unwrap();
+        assert_eq!(registers.len(), 2);
+    }
+
+    #[test]
+    fn encode_fields_to_registers_unknown_field_returns_none() {
+        let mut data = serde_json::Map::new();
+        data.insert("unknown_field".to_string(), serde_json::json!(42));
+
+        let fields = vec![make_field("value", DataType::U16, 0)];
+
+        let result = encode_fields_to_registers(&data, &fields, 1, ByteOrder::BigEndian);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn encode_fields_to_registers_offset_placement() {
+        let mut data = serde_json::Map::new();
+        data.insert("value".to_string(), serde_json::json!(123));
+
+        let fields = vec![make_field("value", DataType::U16, 3)];
+
+        let result = encode_fields_to_registers(&data, &fields, 4, ByteOrder::BigEndian);
+        assert!(result.is_some());
+
+        let registers = result.unwrap();
+        assert_eq!(registers, vec![0, 0, 0, 123]);
     }
 }

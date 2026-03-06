@@ -6,8 +6,8 @@
 //! - Concurrent request handling
 //! - Performance tests
 
-use roboplc_middleware::{DeviceResponseData, Operation};
 use roboplc_middleware::config::Config;
+use roboplc_middleware::{DeviceResponseData, Operation};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -21,11 +21,7 @@ use tokio::time::{sleep, timeout};
 // ============================================================================
 
 /// Helper to create a test config file for async RPC tests
-fn create_async_rpc_test_config(
-    rpc_port: u16,
-    http_port: u16,
-    modbus_port: u16,
-) -> NamedTempFile {
+fn create_async_rpc_test_config(rpc_port: u16, http_port: u16, modbus_port: u16) -> NamedTempFile {
     use std::fs;
 
     let config_content = format!(
@@ -76,8 +72,7 @@ mod integration_tests {
     #[test]
     fn test_config_loads_for_async_rpc() {
         let config_file = create_async_rpc_test_config(19990, 19991, 5020);
-        let config = Config::from_file(config_file.path())
-            .expect("Failed to load config");
+        let config = Config::from_file(config_file.path()).expect("Failed to load config");
 
         assert_eq!(config.server.rpc_port, 19990);
         assert_eq!(config.server.http_port, 19991);
@@ -113,11 +108,7 @@ mod integration_tests {
         let (tx, rx) = oneshot::channel::<DeviceResponseData>();
 
         // Send response
-        let response: DeviceResponseData = (
-            true,
-            serde_json::json!({"status": "connected"}),
-            None,
-        );
+        let response: DeviceResponseData = (true, serde_json::json!({"status": "connected"}), None);
         tx.send(response).unwrap();
 
         // Receive response with timeout
@@ -452,7 +443,10 @@ mod performance_tests {
         let cleanup_time = cleanup_start.elapsed();
 
         println!("Cleanup time: {:?}", cleanup_time);
-        assert!(cleanup_time < Duration::from_millis(100), "Cleanup should be fast");
+        assert!(
+            cleanup_time < Duration::from_millis(100),
+            "Cleanup should be fast"
+        );
     }
 }
 

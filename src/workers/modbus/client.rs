@@ -11,6 +11,9 @@ use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone)]
 pub enum ModbusOp {
+    ReadCoil { address: u16, count: u16 },
+    ReadDiscrete { address: u16, count: u16 },
+    ReadInput { address: u16, count: u16 },
     ReadHolding { address: u16, count: u16 },
     WriteSingle { address: u16, value: u16 },
     WriteMultiple { address: u16, values: Vec<u16> },
@@ -93,6 +96,11 @@ impl ModbusClient {
         };
 
         match op {
+            ModbusOp::ReadCoil { address, count } => self.read_coil(&client, *address, *count),
+            ModbusOp::ReadDiscrete { address, count } => {
+                self.read_discrete(&client, *address, *count)
+            }
+            ModbusOp::ReadInput { address, count } => self.read_input(&client, *address, *count),
             ModbusOp::ReadHolding { address, count } => {
                 self.read_holding(&client, *address, *count)
             }
@@ -101,6 +109,150 @@ impl ModbusClient {
             }
             ModbusOp::WriteMultiple { address, values } => {
                 self.write_multiple(&client, *address, values)
+            }
+        }
+    }
+
+    fn read_coil(&self, client: &Client, address: u16, count: u16) -> OperationResult {
+        let register = ModbusRegister::new(ModbusRegisterKind::Coil, address);
+
+        let mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
+            Ok(m) => m,
+            Err(e) => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some(format!("Failed to create mapping: {}", e)),
+                }
+            }
+        };
+
+        let _mapping = mapping;
+        let start = SystemTime::now();
+        let mut values = Vec::with_capacity(count as usize);
+        let mut all_success = true;
+        for i in 0..count {
+            let reg = ModbusRegister::new(ModbusRegisterKind::Coil, address + i);
+            if let Ok(m) = ModbusMapping::create(client, self.unit_id, reg, 1) {
+                let mut m = m;
+                match m.read::<u8>() {
+                    Ok(v) => values.push(if v != 0 { 1u16 } else { 0u16 }),
+                    Err(_) => all_success = false,
+                }
+            }
+        }
+
+        if all_success && values.len() == count as usize {
+            let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
+            OperationResult {
+                success: true,
+                data: serde_json::json!({
+                    "values": values,
+                    "latency_us": latency
+                }),
+                error: None,
+            }
+        } else {
+            OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Failed to read all coils".to_string()),
+            }
+        }
+    }
+
+    fn read_discrete(&self, client: &Client, address: u16, count: u16) -> OperationResult {
+        let register = ModbusRegister::new(ModbusRegisterKind::Discrete, address);
+
+        let mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
+            Ok(m) => m,
+            Err(e) => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some(format!("Failed to create mapping: {}", e)),
+                }
+            }
+        };
+
+        let _mapping = mapping;
+        let start = SystemTime::now();
+        let mut values = Vec::with_capacity(count as usize);
+        let mut all_success = true;
+        for i in 0..count {
+            let reg = ModbusRegister::new(ModbusRegisterKind::Discrete, address + i);
+            if let Ok(m) = ModbusMapping::create(client, self.unit_id, reg, 1) {
+                let mut m = m;
+                match m.read::<u8>() {
+                    Ok(v) => values.push(if v != 0 { 1u16 } else { 0u16 }),
+                    Err(_) => all_success = false,
+                }
+            }
+        }
+
+        if all_success && values.len() == count as usize {
+            let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
+            OperationResult {
+                success: true,
+                data: serde_json::json!({
+                    "values": values,
+                    "latency_us": latency
+                }),
+                error: None,
+            }
+        } else {
+            OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Failed to read all discrete inputs".to_string()),
+            }
+        }
+    }
+
+    fn read_input(&self, client: &Client, address: u16, count: u16) -> OperationResult {
+        let register = ModbusRegister::new(ModbusRegisterKind::Input, address);
+
+        let mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
+            Ok(m) => m,
+            Err(e) => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some(format!("Failed to create mapping: {}", e)),
+                }
+            }
+        };
+
+        let _mapping = mapping;
+        let start = SystemTime::now();
+        let mut values = Vec::with_capacity(count as usize);
+        let mut all_success = true;
+        for i in 0..count {
+            let reg = ModbusRegister::new(ModbusRegisterKind::Input, address + i);
+            if let Ok(m) = ModbusMapping::create(client, self.unit_id, reg, 1) {
+                let mut m = m;
+                match m.read::<u16>() {
+                    Ok(v) => values.push(v),
+                    Err(_) => all_success = false,
+                }
+            }
+        }
+
+        if all_success && values.len() == count as usize {
+            let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
+            OperationResult {
+                success: true,
+                data: serde_json::json!({
+                    "values": values,
+                    "latency_us": latency
+                }),
+                error: None,
+            }
+        } else {
+            OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Failed to read all input registers".to_string()),
             }
         }
     }

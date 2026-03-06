@@ -28,8 +28,8 @@ use serde_json::Value as JsonValue;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender as StdSender};
+use std::sync::{Arc, Mutex};
 
 use std::net::SocketAddr;
 
@@ -378,7 +378,11 @@ async fn run_async_server(
     tracing::info!("RPC Server started on {}", bind_addr);
 
     // Create handler with device_control_tx
-    let handler = Arc::new(RpcHandler::new(device_ids, device_control_tx.clone(), hub.clone()));
+    let handler = Arc::new(RpcHandler::new(
+        device_ids,
+        device_control_tx.clone(),
+        hub.clone(),
+    ));
 
     // Main select loop
     loop {
@@ -522,7 +526,11 @@ fn handle_device_control_request(
                 // Remove from pending and send error response
                 let mut pending_lock = pending_for_cleanup.lock().unwrap();
                 if let Some(req) = pending_lock.remove(&correlation_id) {
-                    let _ = req.respond_to.send((false, serde_json::json!({}), Some("Request timed out".to_string())));
+                    let _ = req.respond_to.send((
+                        false,
+                        serde_json::json!({}),
+                        Some("Request timed out".to_string()),
+                    ));
                 }
             }
         }
@@ -836,7 +844,11 @@ mod extended_tests {
 
         // Check all IDs are unique
         let unique: std::collections::HashSet<u64> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), unique.len(), "All correlation IDs should be unique");
+        assert_eq!(
+            ids.len(),
+            unique.len(),
+            "All correlation IDs should be unique"
+        );
     }
 
     // =========================================================================
@@ -916,7 +928,10 @@ mod extended_tests {
     #[test]
     fn read_signal_group_missing_group_name() {
         let params = serde_json::json!({}); // Missing group_name
-        assert!(params.get("group_name").is_none(), "group_name should be missing");
+        assert!(
+            params.get("group_name").is_none(),
+            "group_name should be missing"
+        );
     }
 
     /// Test that missing device_id triggers error path
@@ -946,7 +961,10 @@ mod extended_tests {
             respond_to: tx,
         };
 
-        assert!(request.params["data"].is_object(), "data should be an object");
+        assert!(
+            request.params["data"].is_object(),
+            "data should be an object"
+        );
         assert_eq!(request.params["data"].as_object().unwrap().len(), 0);
     }
 
@@ -999,11 +1017,8 @@ mod extended_tests {
         // Simulate response from worker
         let handle = tokio::spawn(async move {
             sleep(Duration::from_millis(5)).await;
-            let response: DeviceResponseData = (
-                true,
-                serde_json::json!({"temperature": 25.5}),
-                None,
-            );
+            let response: DeviceResponseData =
+                (true, serde_json::json!({"temperature": 25.5}), None);
             tx.send(response).unwrap();
         });
 

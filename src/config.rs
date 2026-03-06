@@ -527,10 +527,7 @@ impl Config {
 
                 // 验证信号组字段
                 if let Err(err) = group.validate() {
-                    return Err(ConfigError::SignalGroupValidation(
-                        device.id.clone(),
-                        err,
-                    ));
+                    return Err(ConfigError::SignalGroupValidation(device.id.clone(), err));
                 }
             }
         }

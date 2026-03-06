@@ -90,6 +90,7 @@ pub mod http_worker;
 /// 对应文件：`manager.rs`
 pub mod manager;
 
+pub mod modbus;
 /// Modbus TCP Worker
 ///
 /// 职责：管理单个设备的 Modbus TCP 连接
@@ -101,7 +102,6 @@ pub mod manager;
 /// - 自动重连（指数退避策略）
 /// 对应文件：`modbus_worker.rs`
 pub mod modbus_worker;
-pub mod modbus;
 
 // ========== 支持性 Workers ==========
 

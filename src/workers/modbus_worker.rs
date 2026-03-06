@@ -24,12 +24,12 @@
 use crate::config::Device;
 use crate::messages::Operation;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
+use roboplc::comm::tcp;
 use roboplc::comm::Client;
 use roboplc::controller::prelude::*;
+use roboplc::event_matches;
 use roboplc::io::modbus::prelude::*;
 use roboplc::io::IoMapping;
-use roboplc::event_matches;
-use roboplc::comm::tcp;
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -592,7 +592,11 @@ impl ModbusWorker {
             Operation::ReadSignalGroup => {
                 // ReadSignalGroup maps to a Modbus read based on signal group config
                 let group_name = params.get("group_name")?.as_str()?;
-                let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
+                let group = self
+                    .device
+                    .signal_groups
+                    .iter()
+                    .find(|g| g.name == group_name)?;
                 let addr = self.parse_address(&group.register_address)?;
                 Some(ModbusOp::ReadHolding {
                     address: addr,
@@ -603,9 +607,16 @@ impl ModbusWorker {
                 // WriteSignalGroup maps to a Modbus write based on signal group config
                 let group_name = params.get("group_name")?.as_str()?;
                 let data = params.get("values")?.as_array()?;
-                let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
+                let group = self
+                    .device
+                    .signal_groups
+                    .iter()
+                    .find(|g| g.name == group_name)?;
                 let addr = self.parse_address(&group.register_address)?;
-                let values: Vec<u16> = data.iter().filter_map(|v| v.as_u64().map(|n| n as u16)).collect();
+                let values: Vec<u16> = data
+                    .iter()
+                    .filter_map(|v| v.as_u64().map(|n| n as u16))
+                    .collect();
                 Some(ModbusOp::WriteMultiple {
                     address: addr,
                     values,
@@ -730,12 +741,17 @@ impl Worker<Message, Variables> for ModbusWorker {
                             device_id: self.device.id.clone(),
                             success: false,
                             data: JsonValue::Null,
-                            error: Some("MoveTo operation not implemented for this device type".to_string()),
+                            error: Some(
+                                "MoveTo operation not implemented for this device type".to_string(),
+                            ),
                             correlation_id,
                         });
                     }
                     Operation::ReadSignalGroup => {
-                        let group_name = params.get("group_name").and_then(|v| v.as_str()).unwrap_or("");
+                        let group_name = params
+                            .get("group_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
                             let result = if let Some(client) = &mut self.client {
                                 client.execute_operation(&modbus_op)
@@ -747,7 +763,9 @@ impl Worker<Message, Variables> for ModbusWorker {
                                 }
                             };
                             // Record latency if available
-                            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                            if let Some(latency) =
+                                result.data.get("latency_us").and_then(|v| v.as_u64())
+                            {
                                 self.record_communication(context, latency);
                             }
                             context.hub().send(Message::DeviceResponse {
@@ -771,7 +789,10 @@ impl Worker<Message, Variables> for ModbusWorker {
                         }
                     }
                     Operation::WriteSignalGroup => {
-                        let group_name = params.get("group_name").and_then(|v| v.as_str()).unwrap_or("");
+                        let group_name = params
+                            .get("group_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
                             let result = if let Some(client) = &mut self.client {
                                 client.execute_operation(&modbus_op)
@@ -783,7 +804,9 @@ impl Worker<Message, Variables> for ModbusWorker {
                                 }
                             };
                             // Record latency if available
-                            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                            if let Some(latency) =
+                                result.data.get("latency_us").and_then(|v| v.as_u64())
+                            {
                                 self.record_communication(context, latency);
                             }
                             context.hub().send(Message::DeviceResponse {

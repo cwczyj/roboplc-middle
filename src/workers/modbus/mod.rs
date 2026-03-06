@@ -1,16 +1,16 @@
 //! Modbus worker modules
 
-pub mod types;
 pub mod client;
 pub mod operations;
 pub mod parsing;
+pub mod types;
 
 // Re-export types from submodules for convenient access
-pub use types::{ConnectionState, OperationQueue, TransactionId};
+pub use types::{Backoff, ConnectionState, OperationQueue, TimeoutHandler, TransactionId};
 
 pub use client::{ModbusClient, ModbusOp, OperationResult, QueuedOperation};
 pub use operations::{parse_register_address, RegisterType};
-pub use parsing::{parse_signal_group_fields, ParsedField};
+pub use parsing::{encode_fields_to_registers, parse_signal_group_fields, ParsedField};
 
 // ==================== 导入依赖 ====================
 
@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Internal types (not re-exported)
-use types::{Backoff, TimeoutHandler};
+// use types::{Backoff, TimeoutHandler};
 
 // ==================== ModbusWorker ====================
 
@@ -200,22 +200,56 @@ impl ModbusWorker {
             Operation::ReadSignalGroup => {
                 // ReadSignalGroup maps to a Modbus read based on signal group config
                 let group_name = params.get("group_name")?.as_str()?;
-                let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
+                let group = self
+                    .device
+                    .signal_groups
+                    .iter()
+                    .find(|g| g.name == group_name)?;
                 let (reg_type, addr) = parse_register_address(&group.register_address)?;
                 match reg_type {
-                    RegisterType::Coil => Some(ModbusOp::ReadCoil { address: addr, count: group.register_count }),
-                    RegisterType::Discrete => Some(ModbusOp::ReadDiscrete { address: addr, count: group.register_count }),
-                    RegisterType::Input => Some(ModbusOp::ReadInput { address: addr, count: group.register_count }),
-                    RegisterType::Holding => Some(ModbusOp::ReadHolding { address: addr, count: group.register_count }),
+                    RegisterType::Coil => Some(ModbusOp::ReadCoil {
+                        address: addr,
+                        count: group.register_count,
+                    }),
+                    RegisterType::Discrete => Some(ModbusOp::ReadDiscrete {
+                        address: addr,
+                        count: group.register_count,
+                    }),
+                    RegisterType::Input => Some(ModbusOp::ReadInput {
+                        address: addr,
+                        count: group.register_count,
+                    }),
+                    RegisterType::Holding => Some(ModbusOp::ReadHolding {
+                        address: addr,
+                        count: group.register_count,
+                    }),
                 }
             }
             Operation::WriteSignalGroup => {
-                // WriteSignalGroup maps to a Modbus write based on signal group config
                 let group_name = params.get("group_name")?.as_str()?;
-                let data = params.get("values")?.as_array()?;
-                let group = self.device.signal_groups.iter().find(|g| g.name == group_name)?;
+                let group = self
+                    .device
+                    .signal_groups
+                    .iter()
+                    .find(|g| g.name == group_name)?;
                 let addr = self.parse_address(&group.register_address)?;
-                let values: Vec<u16> = data.iter().filter_map(|v| v.as_u64().map(|n| n as u16)).collect();
+                let values = if let Some(fields_data) =
+                    params.get("data").and_then(|v| v.as_object())
+                {
+                    encode_fields_to_registers(
+                        fields_data,
+                        &group.fields,
+                        group.register_count,
+                        self.device.byte_order.clone(),
+                    )?
+                } else if let Some(raw_values) = params.get("values").and_then(|v| v.as_array()) {
+                    raw_values
+                        .iter()
+                        .filter_map(|v| v.as_u64().map(|n| n as u16))
+                        .collect()
+                } else {
+                    return None;
+                };
                 Some(ModbusOp::WriteMultiple {
                     address: addr,
                     values,
@@ -322,12 +356,15 @@ impl Worker<Message, Variables> for ModbusWorker {
                             device_id: self.device.id.clone(),
                             success: false,
                             data: JsonValue::Null,
-                            error: Some("MoveTo operation not implemented for this device type".to_string()),
+                            error: Some("Operation not supported".to_string()),
                             correlation_id,
                         });
                     }
                     Operation::ReadSignalGroup => {
-                        let group_name = params.get("group_name").and_then(|v| v.as_str()).unwrap_or("");
+                        let group_name = params
+                            .get("group_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
                             let result = if let Some(client) = &mut self.client {
                                 client.execute_operation(&modbus_op)
@@ -339,7 +376,9 @@ impl Worker<Message, Variables> for ModbusWorker {
                                 }
                             };
                             // Record latency if available
-                            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                            if let Some(latency) =
+                                result.data.get("latency_us").and_then(|v| v.as_u64())
+                            {
                                 self.record_communication(context, latency);
                             }
                             context.hub().send(Message::DeviceResponse {
@@ -363,7 +402,10 @@ impl Worker<Message, Variables> for ModbusWorker {
                         }
                     }
                     Operation::WriteSignalGroup => {
-                        let group_name = params.get("group_name").and_then(|v| v.as_str()).unwrap_or("");
+                        let group_name = params
+                            .get("group_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
                             let result = if let Some(client) = &mut self.client {
                                 client.execute_operation(&modbus_op)
@@ -375,7 +417,9 @@ impl Worker<Message, Variables> for ModbusWorker {
                                 }
                             };
                             // Record latency if available
-                            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                            if let Some(latency) =
+                                result.data.get("latency_us").and_then(|v| v.as_u64())
+                            {
                                 self.record_communication(context, latency);
                             }
                             context.hub().send(Message::DeviceResponse {
@@ -433,7 +477,7 @@ impl Worker<Message, Variables> for ModbusWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DeviceType, SignalGroup};
+    use crate::config::{DataType, DeviceType, FieldMapping, SignalGroup};
     use crate::{DeviceEventType, LatencySample};
 
     fn test_device() -> Device {
@@ -510,5 +554,111 @@ mod tests {
         assert_eq!(worker.parse_address("c10"), Some(10));
         assert_eq!(worker.parse_address("d5"), Some(5));
         assert_eq!(worker.parse_address("100"), Some(100)); // No prefix = holding
+    }
+
+    #[test]
+    fn write_signal_group_field_based_json() {
+        let mut device = test_device();
+        device.signal_groups = vec![SignalGroup {
+            name: "test_group".to_string(),
+            description: String::new(),
+            register_address: "h100".to_string(),
+            register_count: 4,
+            fields: vec![
+                FieldMapping {
+                    name: "temperature".to_string(),
+                    data_type: DataType::U16,
+                    offset: 0,
+                },
+                FieldMapping {
+                    name: "pressure".to_string(),
+                    data_type: DataType::F32,
+                    offset: 2,
+                },
+            ],
+        }];
+
+        let worker = ModbusWorker::new(device);
+
+        let params = serde_json::json!({
+            "group_name": "test_group",
+            "data": {
+                "temperature": 25.0,
+                "pressure": 101.3
+            }
+        });
+
+        let result = worker.operation_to_modbus_op(&Operation::WriteSignalGroup, &params);
+        assert!(result.is_some());
+
+        if let Some(ModbusOp::WriteMultiple { address, values }) = result {
+            assert_eq!(address, 100);
+            assert_eq!(values.len(), 4);
+            assert_eq!(values[0], 25);
+        } else {
+            panic!("Expected WriteMultiple operation");
+        }
+    }
+
+    #[test]
+    fn write_signal_group_raw_values() {
+        let mut device = test_device();
+        device.signal_groups = vec![SignalGroup {
+            name: "test_group".to_string(),
+            description: String::new(),
+            register_address: "h200".to_string(),
+            register_count: 3,
+            fields: vec![],
+        }];
+
+        let worker = ModbusWorker::new(device);
+
+        let params = serde_json::json!({
+            "group_name": "test_group",
+            "values": [100, 200, 300]
+        });
+
+        let result = worker.operation_to_modbus_op(&Operation::WriteSignalGroup, &params);
+        assert!(result.is_some());
+
+        if let Some(ModbusOp::WriteMultiple { address, values }) = result {
+            assert_eq!(address, 200);
+            assert_eq!(values, vec![100, 200, 300]);
+        } else {
+            panic!("Expected WriteMultiple operation");
+        }
+    }
+
+    #[test]
+    fn write_signal_group_field_takes_precedence() {
+        let mut device = test_device();
+        device.signal_groups = vec![SignalGroup {
+            name: "test_group".to_string(),
+            description: String::new(),
+            register_address: "h100".to_string(),
+            register_count: 1,
+            fields: vec![FieldMapping {
+                name: "value".to_string(),
+                data_type: DataType::U16,
+                offset: 0,
+            }],
+        }];
+
+        let worker = ModbusWorker::new(device);
+
+        let params = serde_json::json!({
+            "group_name": "test_group",
+            "data": {"value": 42},
+            "values": [999]
+        });
+
+        let result = worker.operation_to_modbus_op(&Operation::WriteSignalGroup, &params);
+        assert!(result.is_some());
+
+        if let Some(ModbusOp::WriteMultiple { values, .. }) = result {
+            assert_eq!(values, vec![42]);
+        } else {
+            panic!("Expected WriteMultiple operation");
+        }
     }
 }

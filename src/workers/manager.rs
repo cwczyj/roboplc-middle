@@ -16,7 +16,7 @@ use crate::config::Config;
 // 从crate根导入Message和Variables类型
 // Message是枚举类型，表示worker之间传递的各种消息
 // Variables是共享状态结构体
-use crate::{Message, Variables, DeviceResponseData};
+use crate::{DeviceResponseData, Message, Variables};
 // roboplc是实时PLC框架，controller模块包含Worker相关的基础trait和宏
 // prelude模块通常包含最常用的类型，使用*通配符导入所有公开项
 use roboplc::controller::prelude::*;
@@ -297,7 +297,10 @@ impl Worker<Message, Variables> for DeviceManager {
                 // 当RpcWorker检测到超时时，发送此消息给DeviceManager清理pending_requests中的条目
                 Message::TimeoutCleanup { correlation_id } => {
                     if let Some(_) = self.pending_requests.remove(&correlation_id) {
-                        tracing::debug!(correlation_id, "Cleaned up timed-out request from pending_requests");
+                        tracing::debug!(
+                            correlation_id,
+                            "Cleaned up timed-out request from pending_requests"
+                        );
                     }
                 }
             }

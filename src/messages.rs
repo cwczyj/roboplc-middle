@@ -172,7 +172,6 @@ pub struct SystemStatusResponse {
     pub uptime_secs: u64,
 }
 
-
 // Response data for device control operations.
 // Using tuple type for compatibility with rpc_worker's ResponseSender
 pub type DeviceResponseData = (bool, JsonValue, Option<String>);
@@ -229,7 +228,12 @@ mod tests {
         // Verify message can be cloned (required for Hub)
         let cloned = msg.clone();
         assert!(matches!(cloned, Message::DeviceControl { .. }));
-        if let Message::DeviceControl { ref device_id, ref operation, .. } = cloned {
+        if let Message::DeviceControl {
+            ref device_id,
+            ref operation,
+            ..
+        } = cloned
+        {
             assert_eq!(device_id, "plc-1");
             assert!(matches!(operation, Operation::ReadSignalGroup));
         }

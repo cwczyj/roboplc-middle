@@ -358,10 +358,7 @@ fn test_device_control_read_batch_message() {
     let received = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(received.device_id, "test-plc");
     assert!(matches!(received.operation, Operation::ReadSignalGroup));
-    assert_eq!(
-        received.params["group_name"],
-        json!("sensor_batch")
-    );
+    assert_eq!(received.params["group_name"], json!("sensor_batch"));
     assert_eq!(received.correlation_id, 55555);
 }
 
@@ -392,10 +389,7 @@ fn test_device_control_write_batch_message() {
     let received = rx.recv_timeout(Duration::from_secs(1)).unwrap();
     assert_eq!(received.device_id, "test-plc");
     assert!(matches!(received.operation, Operation::WriteSignalGroup));
-    assert_eq!(
-        received.params["group_name"],
-        json!("actuator_batch")
-    );
+    assert_eq!(received.params["group_name"], json!("actuator_batch"));
     assert_eq!(received.correlation_id, 66666);
 }
 
@@ -411,7 +405,8 @@ fn test_response_sender_receives_response() {
     use tokio::sync::oneshot;
 
     let (tx, rx) = channel::<DeviceControlRequest>();
-    let (response_tx, response_rx) = oneshot::channel::<(bool, serde_json::Value, Option<String>)>();
+    let (response_tx, response_rx) =
+        oneshot::channel::<(bool, serde_json::Value, Option<String>)>();
 
     let request = DeviceControlRequest {
         device_id: "test-plc".to_string(),

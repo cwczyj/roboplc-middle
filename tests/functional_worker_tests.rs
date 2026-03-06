@@ -31,7 +31,7 @@ fn transaction_ids_are_unique() {
     let id1 = TransactionId::new();
     let id2 = TransactionId::new();
     let id3 = TransactionId::new();
-    
+
     assert_ne!(id1.id, id2.id);
     assert_ne!(id2.id, id3.id);
 }
@@ -54,7 +54,7 @@ fn connection_state_variants() {
     let disconnected = ConnectionState::Disconnected;
     let connecting = ConnectionState::Connecting;
     let connected = ConnectionState::Connected;
-    
+
     assert!(matches!(disconnected, ConnectionState::Disconnected));
     assert!(matches!(connecting, ConnectionState::Connecting));
     assert!(matches!(connected, ConnectionState::Connected));
@@ -65,7 +65,7 @@ fn worker_with_different_configs() {
     let mut device = test_device();
     device.max_concurrent_ops = 5;
     device.heartbeat_interval_sec = 10;
-    
+
     let _worker = ModbusWorker::new(device);
 }
 
@@ -74,6 +74,6 @@ fn worker_with_unreachable_address() {
     let mut device = test_device();
     device.address = "0.0.0.0".to_string();
     device.port = 1;
-    
+
     let _worker = ModbusWorker::new(device);
 }

@@ -64,7 +64,7 @@ async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
     // `.read()` 获取读锁，允许多个线程同时读取
     // 读锁在这里自动释放（RAII模式）
     let states = data.device_states.read();
-    
+
     // `Vec` 是动态数组（向量）
     // `serde_json::Value` 是JSON值的类型，可以是任何JSON类型
     // `states.iter()` 创建迭代器遍历HashMap
@@ -90,7 +90,7 @@ async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
         })
         // `.collect()` 将迭代器收集为集合类型（这里是Vec）
         .collect();
-    
+
     // `Ok()` 包装成功结果
     // `HttpResponse::Ok()` 创建HTTP 200 OK响应
     // `.json()` 将数据序列化为JSON并设置Content-Type头
@@ -107,7 +107,7 @@ async fn get_device_by_id(
     // `path.into_inner()` 提取路径参数的内部值
     // 这里将 web::Path<String> 转换为 String
     let device_id = path.into_inner();
-    
+
     // 获取读锁访问设备状态
     let states = data.device_states.read();
 
@@ -138,11 +138,11 @@ async fn get_device_by_id(
 /// 返回系统健康状态，包括设备连接统计
 async fn get_health(data: web::Data<AppState>) -> Result<HttpResponse> {
     let states = data.device_states.read();
-    
+
     let total = states.len();
     let connected = states.values().filter(|s| s.connected).count();
     let disconnected = total - connected;
-    
+
     // 健康状态判定：
     // - healthy: 所有设备连接
     // - degraded: 部分设备断线
@@ -156,7 +156,7 @@ async fn get_health(data: web::Data<AppState>) -> Result<HttpResponse> {
     } else {
         "degraded"
     };
-    
+
     Ok(HttpResponse::Ok().json(json!({
         "status": status,
         "devices": {
@@ -248,17 +248,17 @@ impl Worker<Message, Variables> for HttpWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         // 从配置中提取HTTP端口
         let http_port = self.config.server.http_port;
-        
+
         // `format!` 宏创建格式化字符串
         // `0.0.0.0` 表示监听所有网络接口
         let addr = format!("0.0.0.0:{}", http_port);
-        
+
         // `context.variables()` 获取共享变量
         // `.device_states.clone()` 克隆Arc（只克隆引用计数，不是数据本身）
         let device_states = context.variables().device_states.clone();
         let config = Arc::new(self.config.clone());
 
-        let app_state = web::Data::new(AppState { 
+        let app_state = web::Data::new(AppState {
             device_states,
             config,
         });
@@ -303,7 +303,10 @@ impl Worker<Message, Variables> for HttpWorker {
                         // `server.run()` 启动服务器，返回Future
                         // `.await` 等待服务器完成（通常永不停止）
                         // `expect()` 如果出错则panic
-                        server.run().await.expect("HttpWorker: failed to run server");
+                        server
+                            .run()
+                            .await
+                            .expect("HttpWorker: failed to run server");
                     }
                     // 绑定失败，`Err(e)` 解构错误
                     Err(e) => {
@@ -321,7 +324,7 @@ impl Worker<Message, Variables> for HttpWorker {
             // `std::time::Duration::from_secs(1)` 创建1秒的持续时间
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
-        
+
         // `Ok(())` 表示成功完成
         Ok(())
     }
@@ -345,9 +348,12 @@ mod tests {
         AppState {
             device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
             config: Arc::new(Config {
-                server: Server { rpc_port: 8080, http_port: 8081 },
-                logging: Logging { 
-                    level: "info".to_string(), 
+                server: Server {
+                    rpc_port: 8080,
+                    http_port: 8081,
+                },
+                logging: Logging {
+                    level: "info".to_string(),
                     file: String::new(),
                     daily_rotation: false,
                 },
@@ -378,9 +384,12 @@ mod tests {
         AppState {
             device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
             config: Arc::new(Config {
-                server: Server { rpc_port: 8080, http_port: 8081 },
-                logging: Logging { 
-                    level: "info".to_string(), 
+                server: Server {
+                    rpc_port: 8080,
+                    http_port: 8081,
+                },
+                logging: Logging {
+                    level: "info".to_string(),
                     file: String::new(),
                     daily_rotation: false,
                 },
@@ -418,7 +427,11 @@ mod tests {
         let app_state = make_app_state_with_device("device-1", true);
         // `web::Path::from()` 创建Path提取器用于测试
         // 传入设备ID
-        let result = get_device_by_id(web::Path::from("device-1".to_string()), web::Data::new(app_state)).await;
+        let result = get_device_by_id(
+            web::Path::from("device-1".to_string()),
+            web::Data::new(app_state),
+        )
+        .await;
         assert!(result.is_ok());
     }
 
@@ -427,12 +440,19 @@ mod tests {
         // 创建空的AppState
         let app_state = make_app_state();
         // 查找不存在的设备
-        let result = get_device_by_id(web::Path::from("nonexistent".to_string()), web::Data::new(app_state)).await;
+        let result = get_device_by_id(
+            web::Path::from("nonexistent".to_string()),
+            web::Data::new(app_state),
+        )
+        .await;
         // `assert_eq!` 断言两个值相等
         // `result.unwrap()` 解包Result，如果是Err则panic
         // `.status()` 获取HTTP状态码
         // `actix_web::http::StatusCode::NOT_FOUND` 是404状态码
-        assert_eq!(result.unwrap().status(), actix_web::http::StatusCode::NOT_FOUND);
+        assert_eq!(
+            result.unwrap().status(),
+            actix_web::http::StatusCode::NOT_FOUND
+        );
     }
 
     #[actix_rt::test]
@@ -441,24 +461,24 @@ mod tests {
         let app_state = make_app_state();
         let result = get_health(web::Data::new(app_state)).await;
         assert!(result.is_ok());
-        
+
         // 验证返回的响应状态码是200
         let response = result.unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
     }
-    
+
     #[actix_rt::test]
     async fn test_get_health_connected_devices() {
         // 测试全部设备连接应该返回 healthy
         let app_state = make_app_state_with_device("device-1", true);
         let result = get_health(web::Data::new(app_state)).await;
         assert!(result.is_ok());
-        
+
         // 验证返回的响应状态码是200
         let response = result.unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
     }
-    
+
     #[actix_rt::test]
     async fn test_get_health_mixed_devices() {
         // 测试混合连接状态应该返回 degraded
@@ -484,9 +504,12 @@ mod tests {
         let app_state = AppState {
             device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
             config: Arc::new(Config {
-                server: Server { rpc_port: 8080, http_port: 8081 },
-                logging: Logging { 
-                    level: "info".to_string(), 
+                server: Server {
+                    rpc_port: 8080,
+                    http_port: 8081,
+                },
+                logging: Logging {
+                    level: "info".to_string(),
                     file: String::new(),
                     daily_rotation: false,
                 },
@@ -495,7 +518,7 @@ mod tests {
         };
         let result = get_health(web::Data::new(app_state)).await;
         assert!(result.is_ok());
-        
+
         // 验证返回的响应状态码是200
         let response = result.unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
@@ -503,14 +526,17 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get_config() {
-        use crate::config::{Server, Logging};
-        
+        use crate::config::{Logging, Server};
+
         let app_state = AppState {
             device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
             config: Arc::new(Config {
-                server: Server { rpc_port: 8080, http_port: 8081 },
-                logging: Logging { 
-                    level: "info".to_string(), 
+                server: Server {
+                    rpc_port: 8080,
+                    http_port: 8081,
+                },
+                logging: Logging {
+                    level: "info".to_string(),
                     file: String::new(),
                     daily_rotation: false,
                 },

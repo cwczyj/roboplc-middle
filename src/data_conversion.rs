@@ -192,7 +192,11 @@ mod tests {
     fn convert_u16_to_f64() {
         // 0x1234 = 4660
         let bytes = [0x12, 0x34];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::U16, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::U16,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, Some(4660.0));
     }
 
@@ -201,7 +205,11 @@ mod tests {
     fn convert_i32_with_negative_value() {
         // -1 in big endian is 0xFFFFFFFF
         let bytes = [0xFF, 0xFF, 0xFF, 0xFF];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::I32, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::I32,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, Some(-1.0));
     }
 
@@ -210,7 +218,11 @@ mod tests {
     fn convert_f32_preserves_precision() {
         let test_value = 3.14159_f32;
         let bytes = test_value.to_be_bytes();
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::F32, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::F32,
+            ByteOrder::BigEndian,
+        );
         let converted_back = result.unwrap() as f32;
         // Allow small floating point tolerance
         assert!((converted_back - test_value).abs() < 0.0001);
@@ -220,7 +232,11 @@ mod tests {
     #[test]
     fn convert_with_byte_order_big_endian() {
         let bytes = [0x12, 0x34, 0x56, 0x78];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::U32, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::U32,
+            ByteOrder::BigEndian,
+        );
         // 0x12345678 = 305419896
         assert_eq!(result, Some(305419896.0));
     }
@@ -231,7 +247,11 @@ mod tests {
         // Same bytes, but interpreted as little endian
         // 0x78563412 = 2018915346
         let bytes = [0x12, 0x34, 0x56, 0x78];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::U32, ByteOrder::LittleEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::U32,
+            ByteOrder::LittleEndian,
+        );
         assert_eq!(result, Some(2018915346.0));
     }
 
@@ -261,14 +281,22 @@ mod tests {
     #[test]
     fn convert_bool_true() {
         let bytes = [0x01];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::Bool, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::Bool,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, Some(1.0));
     }
 
     #[test]
     fn convert_bool_false() {
         let bytes = [0x00];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::Bool, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::Bool,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, Some(0.0));
     }
 
@@ -276,7 +304,11 @@ mod tests {
     fn convert_i16_positive() {
         // 0x0123 = 291
         let bytes = [0x01, 0x23];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::I16, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::I16,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, Some(291.0));
     }
 
@@ -284,27 +316,47 @@ mod tests {
     fn convert_i16_negative() {
         // -1 in big endian is 0xFFFF
         let bytes = [0xFF, 0xFF];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::I16, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::I16,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, Some(-1.0));
     }
 
     #[test]
     fn to_bytes_u16_roundtrip() {
         let value = 12345.0;
-        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(value, DataType::U16, ByteOrder::BigEndian)
-            .unwrap();
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::U16, ByteOrder::BigEndian)
-            .unwrap();
+        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+            value,
+            DataType::U16,
+            ByteOrder::BigEndian,
+        )
+        .unwrap();
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::U16,
+            ByteOrder::BigEndian,
+        )
+        .unwrap();
         assert_eq!(result, value);
     }
 
     #[test]
     fn to_bytes_f32_roundtrip() {
         let value = 98.765_f64;
-        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(value, DataType::F32, ByteOrder::BigEndian)
-            .unwrap();
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::F32, ByteOrder::BigEndian)
-            .unwrap();
+        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+            value,
+            DataType::F32,
+            ByteOrder::BigEndian,
+        )
+        .unwrap();
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::F32,
+            ByteOrder::BigEndian,
+        )
+        .unwrap();
         let result_f32 = result as f32;
         let value_f32 = value as f32;
         assert!((result_f32 - value_f32).abs() < 0.001);
@@ -344,7 +396,11 @@ mod tests {
     fn wrong_length_returns_none() {
         // U16 expects 2 bytes, give 4
         let bytes = [0x12, 0x34, 0x56, 0x78];
-        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(&bytes, DataType::U16, ByteOrder::BigEndian);
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::U16,
+            ByteOrder::BigEndian,
+        );
         assert_eq!(result, None);
     }
 }
