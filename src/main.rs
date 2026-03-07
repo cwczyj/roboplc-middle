@@ -32,8 +32,9 @@ use roboplc::controller::prelude::*;
 use roboplc_middleware::{
     config::Config,
     workers::{
-        config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
-        manager::DeviceManager, modbus::ModbusWorker, rpc_worker::RpcWorker,
+        config_loader::ConfigLoader, heartbeat_worker::HeartbeatWorker, http_worker::HttpWorker,
+        latency_monitor::LatencyMonitor, manager::DeviceManager, modbus::ModbusWorker,
+        rpc_worker::RpcWorker,
     },
     Message, Variables,
 };
@@ -117,6 +118,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for device in &config.devices {
         controller.spawn_worker(ModbusWorker::new(device.clone()))?;
     }
+
+    // 7. HeartbeatWorker - 心跳检测
+    // 注意：必须在 ModbusWorker 之后启动，因为它依赖 ModbusWorker 处理 GetStatus 请求
+    controller.spawn_worker(HeartbeatWorker::new(config.clone()))?;
 
     // 注册信号处理器
     // 捕获 SIGINT (Ctrl+C) 和 SIGTERM 信号，优雅地关闭程序

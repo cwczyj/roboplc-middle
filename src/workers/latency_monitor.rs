@@ -524,18 +524,11 @@ impl Worker<Message, Variables> for LatencyMonitor {
                 latency_us,
             } = msg
             {
-                // `parse::<u32>()` 将字符串解析为u32类型
-                // ::<u32>是类型参数，告诉编译器目标类型
-                // parse返回Result<T, E>，可能成功或失败
-                // `unwrap_or(0)` 如果是Err（解析失败），使用默认值0
-                // 这里假设device_id是数字字符串，如"42"
-                let device_id_num = device_id.parse::<u32>().unwrap_or(0);
-
                 // 创建LatencySample结构体实例
                 // 用于记录到共享变量中，供其他组件查询
                 // struct初始化语法: TypeName { field: value }
                 let sample = LatencySample {
-                    device_id: device_id_num,
+                    device_id: device_id.clone(),
                     latency_us,
                     timestamp_ms,
                 };

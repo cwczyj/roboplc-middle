@@ -90,6 +90,17 @@ pub mod http_worker;
 /// 对应文件：`manager.rs`
 pub mod manager;
 
+/// 心跳检测 Worker
+///
+/// 职责：定期检查所有设备是否在线
+/// 功能：
+/// - 通过发送 GetStatus 请求复用 ModbusWorker 的连接
+/// - 广播 DeviceHeartbeat 消息（包含真实延迟）
+/// - 记录延迟到 latency_samples
+/// - 更新设备状态到共享变量
+/// 对应文件：`heartbeat_worker.rs`
+pub mod heartbeat_worker;
+
 pub mod modbus;
 
 // ========== 支持性 Workers ==========

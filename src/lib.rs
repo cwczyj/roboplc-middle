@@ -226,12 +226,10 @@ pub enum DeviceEventType {
 ///
 /// - `#[derive(Clone, Debug, Copy)]`: Copy trait 允许按位复制（栈上类型）
 /// - Copy 类型在赋值时会自动复制，而不是移动所有权
-#[derive(Clone, Debug, Copy)] // Copy 允许按位复制，避免所有权转移
+#[derive(Clone, Debug)]
 pub struct LatencySample {
     /// 设备 ID
-    /// 使用 u32 而不是 String，因为 ID 通常是数字
-    /// 更节省内存，比较更快
-    pub device_id: u32,
+    pub device_id: String,
 
     /// 延迟时间（微秒）
     pub latency_us: u64,

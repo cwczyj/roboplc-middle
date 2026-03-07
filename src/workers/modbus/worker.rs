@@ -24,7 +24,6 @@ pub struct ModbusWorker {
     client: Option<ModbusClient>,
     connection_state: ConnectionState,
     last_communication: Option<SystemTime>,
-    last_heartbeat: SystemTime,
     pending_transactions: HashMap<u16, TransactionId>,
     #[allow(dead_code)]
     operation_queue: OperationQueue<QueuedOperation>,
@@ -41,7 +40,6 @@ impl ModbusWorker {
             client: None,
             connection_state: ConnectionState::Disconnected,
             last_communication: None,
-            last_heartbeat: SystemTime::UNIX_EPOCH,
             pending_transactions: HashMap::new(),
             operation_queue: OperationQueue::new(max_in_flight),
             backoff: Backoff::new(),
@@ -112,7 +110,7 @@ impl ModbusWorker {
         self.last_communication = Some(now);
 
         let sample = LatencySample {
-            device_id: 0,
+            device_id: self.device.id.clone(),
             latency_us,
             timestamp_ms: now
                 .duration_since(UNIX_EPOCH)
@@ -222,7 +220,7 @@ impl ModbusWorker {
                     .iter()
                     .find(|g| g.name == group_name)?;
                 let (reg_type, addr) = parse_register_address(&group.register_address)?;
-                
+
                 match reg_type {
                     RegisterType::Discrete | RegisterType::Input => {
                         // Read-only registers - cannot write
@@ -240,7 +238,9 @@ impl ModbusWorker {
                                 self.device.byte_order.clone(),
                             )?;
                             regs.iter().map(|&v| v != 0).collect()
-                        } else if let Some(raw_values) = params.get("values").and_then(|v| v.as_array()) {
+                        } else if let Some(raw_values) =
+                            params.get("values").and_then(|v| v.as_array())
+                        {
                             raw_values
                                 .iter()
                                 .filter_map(|v| v.as_u64().map(|n| n != 0))
@@ -248,7 +248,7 @@ impl ModbusWorker {
                         } else {
                             return None;
                         };
-                        
+
                         if values.len() == 1 {
                             Some(ModbusOp::WriteSingleCoil {
                                 address: addr,
@@ -272,7 +272,9 @@ impl ModbusWorker {
                                 group.register_count,
                                 self.device.byte_order.clone(),
                             )?
-                        } else if let Some(raw_values) = params.get("values").and_then(|v| v.as_array()) {
+                        } else if let Some(raw_values) =
+                            params.get("values").and_then(|v| v.as_array())
+                        {
                             raw_values
                                 .iter()
                                 .filter_map(|v| v.as_u64().map(|n| n as u16))
@@ -387,7 +389,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .get("group_name")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        
+
                         // Clone group data to avoid borrow conflicts
                         let group_data = self
                             .device
@@ -395,7 +397,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .iter()
                             .find(|g| g.name == group_name)
                             .map(|g| (g.fields.clone(), self.device.byte_order.clone()));
-                        
+
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
                             let result = if let Some(client) = &mut self.client {
                                 client.execute_operation(&modbus_op)
@@ -412,24 +414,24 @@ impl Worker<Message, Variables> for ModbusWorker {
                             {
                                 self.record_communication(context, latency);
                             }
-                            
+
                             // Parse fields from the register values
                             let response_data = if let Some((fields, byte_order)) = group_data {
                                 if result.success {
-                                    if let Some(values) = result.data.get("values").and_then(|v| v.as_array()) {
+                                    if let Some(values) =
+                                        result.data.get("values").and_then(|v| v.as_array())
+                                    {
                                         // Convert JSON values to u16 registers
                                         let registers: Vec<u16> = values
                                             .iter()
                                             .filter_map(|v| v.as_u64().map(|n| n as u16))
                                             .collect();
-                                        
+
                                         // Parse fields using the signal group configuration
                                         let parsed_fields = parse_signal_group_fields(
-                                            &registers,
-                                            &fields,
-                                            byte_order,
+                                            &registers, &fields, byte_order,
                                         );
-                                        
+
                                         serde_json::json!({
                                             "group_name": group_name,
                                             "result": {
@@ -455,7 +457,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                                     "result": result.data
                                 })
                             };
-                            
+
                             context.hub().send(Message::DeviceResponse {
                                 device_id: self.device.id.clone(),
                                 success: result.success,
@@ -515,27 +517,6 @@ impl Worker<Message, Variables> for ModbusWorker {
                         }
                     }
                 }
-            }
-
-            // Handle heartbeat
-            let now = SystemTime::now();
-            if now
-                .duration_since(self.last_heartbeat)
-                .unwrap_or(Duration::ZERO)
-                >= Duration::from_secs(self.device.heartbeat_interval_sec as u64)
-            {
-                let _tx_id = self.track_transaction();
-                let timestamp_ms = now
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                context.hub().send(Message::DeviceHeartbeat {
-                    device_id: self.device.id.clone(),
-                    timestamp_ms,
-                    latency_us: 0,
-                });
-                self.record_communication(context, 0);
-                self.last_heartbeat = now;
             }
         }
 
@@ -612,7 +593,7 @@ mod tests {
 
         let sample = emitted_sample.expect("latency sample should be emitted");
         assert_eq!(sample.latency_us, 250);
-        assert_eq!(sample.device_id, 0);
+        assert_eq!(sample.device_id, "test-device");
         assert!(sample.timestamp_ms > 0);
     }
 
