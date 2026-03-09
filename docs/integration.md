@@ -188,7 +188,7 @@ public class RpcClient
 
 ### 与 PLC 集成
 
-配置 Modbus TCP 连接参数:
+配置 Modbus TCP 连接参数和信号组:
 
 ```toml
 [[devices]]
@@ -199,11 +199,36 @@ port = 502
 unit_id = 1
 addressing_mode = "zero_based"
 byte_order = "big_endian"
+tcp_nodelay = true
+max_concurrent_ops = 3
+heartbeat_interval_sec = 30
 
-[[devices.register_mappings]]
-signal_name = "motor_speed"
-address = "h100"
+# 定义电机控制信号组
+[[devices.signal_groups]]
+name = "motor_control"
+description = "电机控制寄存器"
+register_address = "h100"
+register_count = 5
+
+[[devices.signal_groups.fields]]
+name = "motor_speed"
 data_type = "U16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "motor_status"
+data_type = "U16"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "motor_direction"
+data_type = "Bool"
+offset = 2
+
+[[devices.signal_groups.fields]]
+name = "error_code"
+data_type = "U16"
+offset = 3
 ```
 
 ### 与机械臂集成
@@ -215,11 +240,31 @@ type = "robot_arm"
 address = "192.168.1.20"
 port = 502
 unit_id = 1
+addressing_mode = "zero_based"
+byte_order = "little_endian"
+max_concurrent_ops = 5
 
-[[devices.register_mappings]]
-signal_name = "position_x"
-address = "h0"
+# 定义位置控制信号组
+[[devices.signal_groups]]
+name = "position_control"
+description = "机械臂位置寄存器"
+register_address = "h0"
+register_count = 6
+
+[[devices.signal_groups.fields]]
+name = "position_x"
 data_type = "F32"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "position_y"
+data_type = "F32"
+offset = 2
+
+[[devices.signal_groups.fields]]
+name = "position_z"
+data_type = "F32"
+offset = 4
 ```
 
 ## 监控

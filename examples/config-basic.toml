@@ -42,38 +42,53 @@ max_concurrent_ops = 3
 # Heartbeat interval in seconds
 heartbeat_interval_sec = 30
 
-# Register mappings for this device
-[[devices.register_mappings]]
-signal_name = "motor_speed"
-address = "h100"
+# Signal group 1: Motor control registers
+[[devices.signal_groups]]
+name = "motor_control"
+description = "Motor control and status registers"
+register_address = "h100"
+register_count = 3
+
+[[devices.signal_groups.fields]]
+name = "motor_speed"
 data_type = "U16"
-access = "rw"
-description = "Motor speed setpoint (RPM)"
+offset = 0
 
-[[devices.register_mappings]]
-signal_name = "motor_status"
-address = "h101"
+[[devices.signal_groups.fields]]
+name = "motor_status"
 data_type = "U16"
-access = "r"
-description = "Motor status (0=stopped, 1=running, 2=fault)"
+offset = 1
 
-[[devices.register_mappings]]
-signal_name = "temperature"
-address = "h200"
-data_type = "I16"
-access = "r"
-description = "Temperature reading (°C x10)"
-
-[[devices.register_mappings]]
-signal_name = "pressure"
-address = "h202"
-data_type = "F32"
-access = "r"
-description = "Pressure reading (bar)"
-
-[[devices.register_mappings]]
-signal_name = "run_command"
-address = "c0"
+[[devices.signal_groups.fields]]
+name = "motor_direction"
 data_type = "Bool"
-access = "rw"
-description = "Start/stop command (coil)"
+offset = 2
+
+# Signal group 2: Sensor readings
+[[devices.signal_groups]]
+name = "sensor_readings"
+description = "Temperature and pressure sensors"
+register_address = "h200"
+register_count = 4
+
+[[devices.signal_groups.fields]]
+name = "temperature"
+data_type = "I16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "pressure"
+data_type = "F32"
+offset = 2
+
+# Signal group 3: Control commands (coils)
+[[devices.signal_groups]]
+name = "control_commands"
+description = "Start/stop and other commands"
+register_address = "c0"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "run_command"
+data_type = "Bool"
+offset = 0

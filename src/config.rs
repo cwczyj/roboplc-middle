@@ -109,7 +109,7 @@ pub struct Logging {
 
 /// 设备配置
 ///
-/// 定义单个 Modbus 设备的连接参数和寄存器映射。
+/// 定义单个 Modbus 设备的连接参数和信号组配置。
 ///
 /// # 字段说明
 ///
@@ -123,7 +123,7 @@ pub struct Logging {
 /// - `tcp_nodelay`: 是否启用 TCP_NODELAY（禁用 Nagle 算法）
 /// - `max_concurrent_ops`: 最大并发操作数
 /// - `heartbeat_interval_sec`: 心跳间隔（秒）
-/// - `register_mappings`: 寄存器地址映射列表
+/// - `signal_groups`: 信号组列表（用于批量读写寄存器）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
     /// 设备唯一标识符（在所有设备中必须唯一）

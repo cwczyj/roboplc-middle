@@ -9,7 +9,7 @@ http_port = 8081
 level = "info"
 daily_rotation = true
 
-# PLC Device 1 - Production Line Controller
+# ==================== PLC Device 1 - Production Line Controller ====================
 [[devices]]
 id = "plc-production"
 type = "plc"
@@ -22,25 +22,46 @@ tcp_nodelay = true
 max_concurrent_ops = 5
 heartbeat_interval_sec = 15
 
-[[devices.register_mappings]]
-signal_name = "line_speed"
-address = "h0"
-data_type = "U16"
-access = "rw"
+# Signal group: Production line status
+[[devices.signal_groups]]
+name = "line_status"
+description = "Production line control and monitoring"
+register_address = "h0"
+register_count = 3
 
-[[devices.register_mappings]]
-signal_name = "line_status"
-address = "h1"
+[[devices.signal_groups.fields]]
+name = "line_speed"
 data_type = "U16"
-access = "r"
+offset = 0
 
-[[devices.register_mappings]]
-signal_name = "product_count"
-address = "h10"
+[[devices.signal_groups.fields]]
+name = "line_status"
+data_type = "U16"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "emergency_stop"
+data_type = "Bool"
+offset = 2
+
+# Signal group: Production counters
+[[devices.signal_groups]]
+name = "production_counters"
+description = "Product count and statistics"
+register_address = "h10"
+register_count = 4
+
+[[devices.signal_groups.fields]]
+name = "product_count"
 data_type = "U32"
-access = "r"
+offset = 0
 
-# PLC Device 2 - Quality Control
+[[devices.signal_groups.fields]]
+name = "reject_count"
+data_type = "U32"
+offset = 2
+
+# ==================== PLC Device 2 - Quality Control ====================
 [[devices]]
 id = "plc-quality"
 type = "plc"
@@ -53,25 +74,34 @@ tcp_nodelay = true
 max_concurrent_ops = 3
 heartbeat_interval_sec = 20
 
-[[devices.register_mappings]]
-signal_name = "inspection_result"
-address = "h0"
-data_type = "U16"
-access = "r"
+# Signal group: Quality inspection
+[[devices.signal_groups]]
+name = "quality_inspection"
+description = "Quality inspection and calibration"
+register_address = "h0"
+register_count = 5
 
-[[devices.register_mappings]]
-signal_name = "reject_count"
-address = "h1"
+[[devices.signal_groups.fields]]
+name = "inspection_result"
 data_type = "U16"
-access = "r"
+offset = 0
 
-[[devices.register_mappings]]
-signal_name = "calibration_factor"
-address = "h10"
+[[devices.signal_groups.fields]]
+name = "reject_count"
+data_type = "U16"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "calibration_factor"
 data_type = "F32"
-access = "rw"
+offset = 2
 
-# Robot Arm - 6-Axis Manipulator
+[[devices.signal_groups.fields]]
+name = "inspection_active"
+data_type = "Bool"
+offset = 4
+
+# ==================== Robot Arm - 6-Axis Manipulator ====================
 [[devices]]
 id = "robot-arm-1"
 type = "robot_arm"
@@ -84,38 +114,46 @@ tcp_nodelay = true
 max_concurrent_ops = 2
 heartbeat_interval_sec = 10
 
-# Robot position registers
-[[devices.register_mappings]]
-signal_name = "axis_x"
-address = "h100"
-data_type = "F32"
-access = "rw"
-description = "X-axis position (mm)"
+# Signal group: Robot position
+[[devices.signal_groups]]
+name = "robot_position"
+description = "6-axis robot position and gripper state"
+register_address = "h100"
+register_count = 7
 
-[[devices.register_mappings]]
-signal_name = "axis_y"
-address = "h102"
+[[devices.signal_groups.fields]]
+name = "axis_x"
 data_type = "F32"
-access = "rw"
-description = "Y-axis position (mm)"
+offset = 0
 
-[[devices.register_mappings]]
-signal_name = "axis_z"
-address = "h104"
+[[devices.signal_groups.fields]]
+name = "axis_y"
 data_type = "F32"
-access = "rw"
-description = "Z-axis position (mm)"
+offset = 2
 
-[[devices.register_mappings]]
-signal_name = "gripper_state"
-address = "h106"
+[[devices.signal_groups.fields]]
+name = "axis_z"
+data_type = "F32"
+offset = 4
+
+[[devices.signal_groups.fields]]
+name = "gripper_state"
 data_type = "U16"
-access = "rw"
-description = "Gripper state (0=open, 1=closed, 2=error)"
+offset = 6
 
-[[devices.register_mappings]]
-signal_name = "move_command"
-address = "c0"
+# Signal group: Robot commands (coils)
+[[devices.signal_groups]]
+name = "robot_commands"
+description = "Robot movement and control commands"
+register_address = "c0"
+register_count = 2
+
+[[devices.signal_groups.fields]]
+name = "move_command"
 data_type = "Bool"
-access = "rw"
-description = "Trigger movement to target position"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "gripper_command"
+data_type = "Bool"
+offset = 1

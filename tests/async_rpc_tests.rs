@@ -47,10 +47,15 @@ tcp_nodelay = true
 max_concurrent_ops = 3
 heartbeat_interval_sec = 30
 
-[[devices.register_mappings]]
-signal_name = "test_register"
-address = "h100"
-data_type = "u16"
+[[devices.signal_groups]]
+name = "test_signals"
+register_address = "h100"
+register_count = 5
+
+[[devices.signal_groups.fields]]
+name = "test_register"
+data_type = "U16"
+offset = 0
 "#,
         rpc_port, http_port, modbus_port
     );

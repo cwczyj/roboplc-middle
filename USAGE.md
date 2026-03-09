@@ -62,10 +62,20 @@ byte_order = "big_endian"
 heartbeat_interval_sec = 5
 max_concurrent_ops = 3
 
-[[devices.register_mappings]]
-signal_name = "temperature"
-address = "h100"
+[[devices.signal_groups]]
+name = "sensor_data"
+register_address = "h100"
+register_count = 2
+
+[[devices.signal_groups.fields]]
+name = "temperature"
 data_type = "U16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "pressure"
+data_type = "U16"
+offset = 1
 ```
 
 ### 4. 运行
@@ -132,18 +142,35 @@ sudo cargo run --release
 **示例：**
 
 ```toml
-# 读取保持寄存器 100
-[[devices.register_mappings]]
-signal_name = "temperature"
-address = "h100"
-data_type = "U16"
+# 定义信号组：传感器数据
+[[devices.signal_groups]]
+name = "sensor_data"
+register_address = "h100"
+register_count = 2
 
-# 写入线圈 5
-[[devices.register_mappings]]
-signal_name = "pump_status"
-address = "c5"
+# 定义字段：温度（占用寄存器 0）
+[[devices.signal_groups.fields]]
+name = "temperature"
+data_type = "U16"
+offset = 0
+
+# 定义字段：压力（占用寄存器 1）
+[[devices.signal_groups.fields]]
+name = "pressure"
+data_type = "U16"
+offset = 1
+
+# 定义信号组：控制命令（线圈）
+[[devices.signal_groups]]
+name = "control_commands"
+register_address = "c0"
+register_count = 1
+
+# 定义字段：泵控制（占用线圈 0）
+[[devices.signal_groups.fields]]
+name = "pump_status"
 data_type = "Bool"
-access = "rw"
+offset = 0
 ```
 
 #### 数据类型

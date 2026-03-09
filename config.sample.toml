@@ -1,12 +1,26 @@
+# RoboPLC Middleware 配置示例
+# 复制此文件为 config.toml 并根据实际情况修改
+
 [server]
+# JSON-RPC 服务器端口
 rpc_port = 8080
+
+# HTTP 管理接口端口
 http_port = 8081
 
 [logging]
+# 日志级别: trace, debug, info, warn, error
 level = "info"
+
+# 日志文件路径
 file = "/var/log/roboplc-middleware.log"
+
+# 是否按天轮转日志
 daily_rotation = true
 
+# ==================== 设备配置 ====================
+
+# 设备 1: PLC
 [[devices]]
 id = "plc1"
 type = "plc"
@@ -19,9 +33,116 @@ tcp_nodelay = true
 max_concurrent_ops = 3
 heartbeat_interval_sec = 30
 
-[[devices.register_mappings]]
-signal_name = "motor_speed"
-address = "h100"
-data_type = "u16"
-access = "rw"
-description = "Motor speed setpoint"
+# 信号组 1: 电机控制
+[[devices.signal_groups]]
+name = "motor_control"
+description = "电机控制寄存器"
+register_address = "h100"
+register_count = 5
+
+[[devices.signal_groups.fields]]
+name = "motor_speed"
+data_type = "U16"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "motor_status"
+data_type = "U16"
+offset = 1
+
+[[devices.signal_groups.fields]]
+name = "motor_direction"
+data_type = "Bool"
+offset = 2
+
+[[devices.signal_groups.fields]]
+name = "error_code"
+data_type = "U16"
+offset = 3
+
+[[devices.signal_groups.fields]]
+name = "fault_flag"
+data_type = "Bool"
+offset = 4
+
+# 信号组 2: 温度传感器
+[[devices.signal_groups]]
+name = "temperature_sensor"
+description = "温度传感器数据"
+register_address = "h200"
+register_count = 10
+
+[[devices.signal_groups.fields]]
+name = "temperature_1"
+data_type = "F32"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "temperature_2"
+data_type = "F32"
+offset = 2
+
+[[devices.signal_groups.fields]]
+name = "humidity"
+data_type = "U16"
+offset = 4
+
+[[devices.signal_groups.fields]]
+name = "sensor_status"
+data_type = "U16"
+offset = 5
+
+[[devices.signal_groups.fields]]
+name = "alarm_code"
+data_type = "U16"
+offset = 6
+
+# 设备 2: 机械臂（可选）
+[[devices]]
+id = "robot_arm_1"
+type = "robot_arm"
+address = "192.168.1.20"
+port = 502
+unit_id = 1
+addressing_mode = "zero_based"
+byte_order = "little_endian"
+tcp_nodelay = true
+max_concurrent_ops = 5
+heartbeat_interval_sec = 10
+
+# 信号组: 位置控制
+[[devices.signal_groups]]
+name = "position_control"
+description = "机械臂位置寄存器"
+register_address = "h0"
+register_count = 12
+
+[[devices.signal_groups.fields]]
+name = "position_x"
+data_type = "F32"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "position_y"
+data_type = "F32"
+offset = 2
+
+[[devices.signal_groups.fields]]
+name = "position_z"
+data_type = "F32"
+offset = 4
+
+[[devices.signal_groups.fields]]
+name = "orientation_roll"
+data_type = "F32"
+offset = 6
+
+[[devices.signal_groups.fields]]
+name = "orientation_pitch"
+data_type = "F32"
+offset = 8
+
+[[devices.signal_groups.fields]]
+name = "orientation_yaw"
+data_type = "F32"
+offset = 10

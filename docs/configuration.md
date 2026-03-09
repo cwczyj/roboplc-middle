@@ -30,12 +30,18 @@ tcp_nodelay = true
 max_concurrent_ops = 3
 heartbeat_interval_sec = 30
 
+# 信号组配置：定义一个信号组及其字段映射
+# [[devices.signal_groups]] 定义信号组的属性
+# [[devices.signal_groups.fields]] 定义该信号组内的字段（属于上一个 [[devices.signal_groups]]）
 [[devices.signal_groups]]
 name = "temperature_sensor"
 description = "温度传感器数据"
 register_address = "h100"
-register_count = 10
+register_count = 5
+# fields 字段在下面定义（可省略，但强烈建议配置）
 
+# 以下 [[devices.signal_groups.fields]] 定义属于上面的 temperature_sensor 信号组
+# fields 是 [[devices.signal_groups]] 的子配置项，定义该组内的具体字段
 [[devices.signal_groups.fields]]
 name = "temperature"
 data_type = "F32"
@@ -46,12 +52,29 @@ name = "humidity"
 data_type = "U16"
 offset = 2
 
+[[devices.signal_groups.fields]]
+name = "pressure"
+data_type = "I16"
+offset = 3
+
+[[devices.signal_groups.fields]]
+name = "sensor_status"
+data_type = "Bool"
+offset = 4
+# 上面的 4 个 [[devices.signal_groups.fields]] 都属于 temperature_sensor 信号组
+
+# 下面的 [[devices.signal_groups]] 开始定义一个新的信号组
+# 注意：新的 [[devices.signal_groups]] 会重置 fields 的关联关系
+# 因此下面的 [[devices.signal_groups.fields]] 属于 status 信号组，而不是 temperature_sensor
+
 [[devices.signal_groups]]
 name = "status"
 description = "设备状态"
 register_address = "h200"
 register_count = 5
 
+# 设备状态信号组的字段映射
+# offset 表示相对于 signal_group.register_address 的偏移量
 [[devices.signal_groups.fields]]
 name = "running"
 data_type = "Bool"
@@ -117,7 +140,52 @@ heartbeat_interval_sec = 10
 | `description` | String | 否 | 信号组描述 |
 | `register_address` | String | 是 | Modbus 起始地址（带前缀，如 "h100"） |
 | `register_count` | u16 | 是 | 寄存器数量 |
-| `fields` | Array | 是 | 字段映射列表 |
+| `fields` | Array | **建议** | 字段映射列表（若不提供则为空列表） |
+
+**注意:** `fields` 字段虽然可以省略（解析为空列表），但为了正确解释寄存器数据的含义，**强烈建议**明确配置字段映射。如果不配置 `fields`，API 将返回原始寄存器值而无法进行数据类型转换和字段命名。
+
+#### TOML 数组层级关系说明
+
+在 TOML 配置中，`[[devices.signal_groups]]` 和 `[[devices.signal_groups.fields]]` 的关系如下：
+
+```toml
+# 第 1 个信号组开始
+[[devices.signal_groups]]
+name = "group1"
+register_address = "h100"
+register_count = 5
+
+# 以下 fields 属于 group1（直到遇到下一个 [[devices.signal_groups]]）
+[[devices.signal_groups.fields]]
+name = "field1"
+data_type = "F32"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "field2"
+data_type = "U16"
+offset = 2
+# group1 的 fields 结束
+
+# 第 2 个信号组开始（重置 fields 关联）
+[[devices.signal_groups]]
+name = "group2"
+register_address = "h200"
+register_count = 3
+
+# 以下 fields 属于 group2
+[[devices.signal_groups.fields]]
+name = "field3"
+data_type = "I16"
+offset = 0
+# group2 的 fields 结束
+```
+
+**关键规则：**
+- 每个 `[[devices.signal_groups]]` 开始一个新的信号组
+- 后续的 `[[devices.signal_groups.fields]]` 自动归属到**上一个** `[[devices.signal_groups]]`
+- 遇到新的 `[[devices.signal_groups]]` 时，自动结束上一个信号组的 fields 定义
+- `fields` 可以省略（不配置任何 `[[devices.signal_groups.fields]]`）
 
 ### [[devices.signal_groups.fields]] 字段映射
 
@@ -126,6 +194,39 @@ heartbeat_interval_sec = 10
 | `name` | String | 是 | 字段名称 |
 | `data_type` | String | 是 | 数据类型: U16/I16/U32/I32/F32/Bool |
 | `offset` | u16 | 是 | 寄存器偏移量（以寄存器为单位） |
+
+**字段映射示例：**
+
+假设有以下配置：
+```toml
+register_address = "h100"
+register_count = 5
+
+[[devices.signal_groups.fields]]
+name = "temperature"
+data_type = "F32"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "humidity"
+data_type = "U16"
+offset = 2
+```
+
+**寄存器布局：**
+```
+Modbus 地址    偏移量    字段名        数据类型
+h100           0         temperature   F32 (占 2 个寄存器)
+h101           1         (temperature 继续存储)
+h102           2         humidity      U16 (占 1 个寄存器)
+h103           3         (未使用)
+h104           4         (未使用)
+```
+
+**验证规则：**
+- `temperature` (F32): offset=0, 占用 2 个寄存器 → 访问范围: offset 0-1 ✓
+- `humidity` (U16): offset=2, 占用 1 个寄存器 → 访问范围: offset 2 ✓
+- 两者均在 `register_count=5` 范围内 ✓
 
 ## 地址格式
 
