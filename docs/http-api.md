@@ -5,149 +5,147 @@
 ## 📡 端点概览
 
 ### GET 端点
-| 端点 | 方法 | 说明 |
-|-------|------|----------|
-| `GET /api/devices` | 获取所有设备列表 | 返回设备 ID、状态等信息 |
-| `GET /api/devices/{id}` | 获取单个设备详情 | 通过设备 ID 查询 |
-| `GET /api/health` | 健康检查 | 返回系统健康状态 |
-| `GET /api/config` | 查询配置 | 返回当前配置信息 |
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/devices` | 获取所有设备列表，返回设备 ID、连接状态、错误计数等 |
+| `GET /api/devices/{id}/status` | 获取单个设备详情，包括连接状态和通信时间 |
+| `GET /api/health` | 系统健康检查，返回健康状态和设备连接统计 |
+| `GET /api/config` | 查询当前配置信息 |
 
 ### POST 端点
-| 端点 | 方法 | 说明 |
-|-------|------|----------|
-| `POST /api/devices/{id}/register` | 设置寄存器 | 设置 Modbus 设备的寄存器地址和值 |
-| `POST /api/devices/{id}/batch` | 批量操作 | 批量读写多个寄存器 |
-| `POST /api/devices/{id}/move` | 机械臂控制 | 移动机械臂到指定位置 |
 
-## 🔧 工作流程
-
-### 1. 设备注册请求流程
-```
-Client              DeviceManager         ModbusWorker
-    │                      │
-    ├── send DeviceControl  │  │
-    │                      │  ◄──►
-    │                      │  │
-    │                      ▼         │
-    │                      │  │  ◄──►
-    ├─► receive DeviceControl  │◄───┤
-    │                      │  │
-    │                      │         │
-    │  route to ModbusWorker │
-    ├─► execute Modbus operation│
-    │  │  ◄───┤
-    │  │         │  │
-    │  │         │
-    │  │         │
-    │  │         ▼         │
-    │  │  │         │
-    │  │         │         │
-    └─► send DeviceResponse   │
-    │                      │
-    ◄────────────────────────────────────────────────────►
-    └─────────────────────────────────────────────────────►
-```
-
-### 2. 批量操作流程
-```
-Client              DeviceManager         ModbusWorker
-    │                      │
-    ├── send batch request   │  │
-    │                      │  ◄──►
-    │                      │  │
-    │                      ▼         │
-    │                      │  │  ◄──►
-    ├─► route to ModbusWorker│
-    │                      │
-    │                      │  │  │  │
-    │  │         │  │
-    │  │         │  │
-    │  │  │  │  │
-    │  │  │  │  │
-    │  │         │  │
-    └─► execute operations    │  │
-    │  │  ◄───┤
-    │  │  │  │  │
-    │  │         │  │
-    │  │         │
-    │  │         ▼         │
-    │  │         │  │  │
-    │  │         │  │
-    │  │  │  │  │
-    └─► return responses      │
-    │                      │
-    ◄────────────────────────────────────────────────────►
-    └─────────────────────────────────────────────────────►
-```
-
-### 3. 消息传递机制
-
-HTTP API → Hub → DeviceManager → ModbusWorker 消息流：
-1. **correlation_id**：每个请求通过 next_correlation_id() 生成唯一 ID
-2. **发送**：通过 context.hub().send() 发送 DeviceControl 消息
-3. **路由**：DeviceManager 使用 worker_map 查找目标 Worker
-4. **响应**：ModbusWorker 发送 DeviceResponse，DeviceManager 路由回请求者
+| 端点 | 说明 |
+|------|------|
+| `POST /api/config/reload` | 配置重载（实际由文件监控触发，此端点仅返回成功） |
 
 ## 📊 API 响应格式
 
-### 成功响应
+### 设备列表响应
+
+**请求：** `GET /api/devices`
+
+**响应：**
 ```json
 {
-  "status": "success",
-  "data": { ... }
+  "devices": [
+    {
+      "id": "plc-1",
+      "connected": true,
+      "last_communication_ms": 1234,
+      "error_count": 0
+    }
+  ]
 }
 ```
 
-### 错误响应
+### 单个设备状态
+
+**请求：** `GET /api/devices/{id}/status`
+
+**成功响应（200）：**
 ```json
 {
-  "status": "error",
-  "error": "错误描述"
+  "id": "plc-1",
+  "connected": true,
+  "last_communication_ms": 1234,
+  "error_count": 0,
+  "reconnect_count": 2
 }
 ```
 
-## 📝 并发控制
-
-### 请求排队
-- OperationQueue 限制最大并发操作数量（max_in_flight）
-- 队列满时拒绝新请求
-
-### 顺序保证
-- 每个操作完成后立即执行下一个
-- 防止并发冲突
-
-## 🔒 超时处理
-
-### 连接超时
-- 基础超时：1 秒
-- 最大超时：30 秒
-- 超时后自动重连
-
-### 心跳机制
-- 间隔：30 秒
-- 超时重置连接状态
-
-## 🧪 测试指南
-
-### 运行系统
-```bash
-# 开发模式
-ROBOPLC_SIMULATED=1 cargo run
-
-# 生产模式
-cargo run
+**设备不存在（404）：**
+```json
+{
+  "error": "Device not found"
+}
 ```
 
-### 测试
-```bash
-# 运行特定测试
-cargo test test_name
+### 健康检查响应
 
-# 运行所有测试
-cargo test
+**请求：** `GET /api/health`
+
+**响应：**
+```json
+{
+  "status": "healthy",
+  "devices": {
+    "total": 3,
+    "connected": 3,
+    "disconnected": 0
+  }
+}
 ```
 
-## 📚 相关文档
+**健康状态说明：**
 
-- [消息传递机制](../messaging/消息传递机制.md) - 详细的消息流设计
-- [配置管理](../configuration/配置管理.md) - 配置热更新机制
+| 状态 | 条件 |
+|------|------|
+| `healthy` | 所有设备都已连接 |
+| `degraded` | 部分设备断开连接 |
+| `unhealthy` | 所有设备断开连接或没有配置设备 |
+
+### 配置查询响应
+
+**请求：** `GET /api/config`
+
+**响应：**
+```json
+{
+  "config": {
+    "server": {
+      "rpc_port": 8080,
+      "http_port": 8081
+    },
+    "logging": {
+      "level": "info",
+      "file": "/var/log/roboplc-middleware.log",
+      "daily_rotation": true
+    },
+    "devices": [...]
+  }
+}
+```
+
+### 配置重载响应
+
+**请求：** `POST /api/config/reload`
+
+**响应：**
+```json
+{
+  "reload": "ok"
+}
+```
+
+> **注意：** 实际的配置重载由 ConfigLoader 的文件监控机制触发。修改 `config.toml` 文件后会自动重新加载配置。
+
+## 🔧 架构说明
+
+### 无状态设计
+
+HttpWorker 不维护任何内部状态，所有数据从共享状态（Variables）读取：
+- `device_states`: 设备连接状态和统计信息
+- `config`: 当前配置
+
+### 技术实现
+
+- 使用 **actix-web** 框架
+- 在 blocking worker 中spawn tokio runtime
+- 通过 `AppState` 共享设备状态
+- 使用 `parking_lot_rt::RwLock` 实现并发安全读取
+
+### 共享状态结构
+
+```rust
+pub struct AppState {
+    pub device_states: Arc<RwLock<HashMap<String, DeviceStatus>>>,
+    pub config: Arc<Config>,
+}
+```
+
+## 📝 相关文档
+
+- [Worker 模块](workers/worker模块.md) - HttpWorker 详细说明
+- [架构概览](architecture.md) - 整体架构设计
+- [配置管理](configuration.md) - 配置热更新机制

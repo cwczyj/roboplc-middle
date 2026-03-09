@@ -4,31 +4,37 @@
 
 ## 🏗️ Worker 类型
 
-| Worker | 职责 | 说明 |
-|--------|------|----------|
-| **RpcWorker** | JSON-RPC 服务 | 处理来自客户端的 JSON-RPC 请求，通过 Hub 与其他 Worker 通信 |
-| **DeviceManager** | 设备管理 | 接收设备控制消息，路由到对应的 ModbusWorker，管理待处理请求 |
-| **ModbusWorker** | 设备控制 | 管理 Modbus TCP 连接，执行 Modbus 操作，发送心跳 |
-| **HttpWorker** | HTTP 服务 | 提供 REST API 接口用于设备管理和监控 |
-| **ConfigUpdater** | 配置管理 | 监听配置变化，动态更新系统配置和设备列表 |
+| Worker | 端口 | 职责 |
+|--------|------|------|
+| **RpcWorker** | 8080 | JSON-RPC 2.0 服务器（异步架构），处理客户端请求 |
+| **HttpWorker** | 8081 | HTTP REST API 服务器，提供设备管理接口 |
+| **DeviceManager** | - | 消息路由器，协调 Worker 间通信 |
+| **ModbusWorker** | - | Modbus TCP 客户端（每设备一个），执行寄存器操作 |
+| **HeartbeatWorker** | - | 独立心跳检测，跟踪设备延迟 |
+| **LatencyMonitor** | - | 3-sigma 延迟异常检测 |
+| **ConfigLoader** | - | 配置热重载（文件监控） |
 
 ## 🔄 Worker 通信流程
 
 ```
-客户端
-   │
-   ├── RPC Worker (JSON-RPC)
-   │   │
-   └── HttpWorker (REST API)
-       │
-       └──> Hub
-       │           │
-       │           ├── DeviceManager (路由)
-       │           ├── ModbusWorker (xN)
-       │           ├── HttpWorker
-       │           └── ConfigUpdater
-       │
-       └──> Hub
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
+│   JSON-RPC      │────▶│  Device Manager  │────▶│   Modbus    │
+│   Server        │     │  (Hub Router)    │     │   Workers   │
+│   (port 8080)   │     └──────────────────┘     │  (per device)│
+└─────────────────┘              │               └─────────────┘        │                        │                       │
+        │                        ▼                       │
+        │              ┌──────────────────┐             │
+        └─────────────▶│  HTTP API       │◀────────────┘
+                       │  (port 8081)    │
+                       └──────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ ConfigLoader │     │ Heartbeat    │     │  Latency     │
+│ (Hot Reload) │     │  Worker      │     │  Monitor     │
+└──────────────┘     └──────────────┘     └──────────────┘
 ```
 
 ## 📋 详细说明
@@ -36,56 +42,59 @@
 ### RpcWorker
 
 **职责：**
-- 监听 JSON-RPC 端点（默认端口 8543）
-- 解析 JSON-RPC 请求
-- 转换为内部 Message 类型
+- 监听 JSON-RPC 端点（默认端口 8080）
+- 使用异步架构处理并发请求
+- 解析 JSON-RPC 请求并转换为内部 Message 类型
 - 通过 Hub 发送设备控制消息
-- 处理响应并通过 response_tx 发回客户端
+- 处理响应并通过 oneshot 通道发回客户端
+
+**架构特点（异步模式）：**
+- 在 blocking worker 中spawn tokio runtime
+- 使用 `tokio::net::TcpListener` 进行异步 TCP 接收
+- 使用 `tokio::select!` 进行并发处理
+- 使用 `tokio::sync::mpsc` 进行设备控制请求传递
+- 使用 `tokio::sync::oneshot` 进行响应处理
+
+**JSON-RPC 方法：**
+
+| 方法 | 说明 |
+|------|------|
+| `ping` | 健康检查 |
+| `get_version` | 获取中间件版本 |
+| `get_device_list` | 获取设备列表 |
+| `get_status` | 获取设备状态 |
+| `read_signal_group` | 读取信号组 |
+| `write_signal_group` | 写入信号组 |
+
+**请求格式：**
+```json
+{"m": "read_signal_group", "p": {"device_id": "plc-1", "group_name": "sensors"}}
+```
 
 **关键结构：**
 
-#### RpcHandler
-处理单个 JSON-RPC 请求和响应的回调结构。
+```rust
+// 设备控制请求
+pub struct DeviceControlRequest {
+    pub device_id: String,
+    pub operation: Operation,
+    pub params: JsonValue,
+    pub correlation_id: u64,
+    pub respond_to: ResponseSender,  // oneshot::Sender
+}
 
-#### DeviceControlRequest
-代表设备控制请求，包含：
-- `device_id`：目标设备 ID
-- `operation`：操作类型
-- `params`：参数（JSON 值）
-- `correlation_id`：请求 ID（用于响应匹配）
-
-#### DeviceResponseData
-通过通道发送回请求者的响应数据：
-- `success`：操作是否成功
-- `data`：响应数据（JSON 值）
-- `error`：错误信息
-
-**流程：**
-```
-客户端 JSON-RPC 请求
-  │
-  ▼
-  RpcHandler 接收请求
-  │
-  ├── 生成 correlation_id
-  │  │
-  ├── 创建 DeviceControl 消息
-  │  │  │
-  └── 通过 response_tx 发送到主循环
-      │
-      ▼
-      主循环：通过 response_rx 接收响应
-      │
-      │  ├── 匹配 correlation_id
-      │  │  ├── 查找 pending_requests 中的通道
-      │  │  │  ├── 发送响应数据
-      │  │  │  └── 清理 pending_requests
+// 待处理请求跟踪
+struct PendingRequest {
+    correlation_id: u64,
+    created_at: Instant,
+    respond_to: ResponseSender,
+}
 ```
 
 **关键点：**
-- **通道机制**：使用 mpsc::channel 在 RpcHandler 和主循环间传递消息
-- **异步处理**：主循环非阻塞等待响应
-- **超时处理**：使用 recv_timeout() 设置响应超时时间
+- **超时清理**：定期清理超时的pending_requests
+- **correlation_id**：全局原子计数器生成唯一 ID
+- **错误传播**：超时时发送 TimeoutCleanup 消息
 
 ### DeviceManager
 
@@ -148,117 +157,139 @@ pub struct DeviceManager {
 
 **职责：**
 - 管理 Modbus TCP 连接
-- 执行 Modbus 操作（读/写寄存器）
+- 执行 Modbus 操作（读写所有寄存器类型）
 - 维护操作队列（并发控制）
-- 发送心跳保持连接活跃
-- 监控设备延迟和状态
+- 上报延迟数据
+
+**模块结构：**
+```
+modbus/
+├── mod.rs       # 模块导出
+├── client.rs    # ModbusClient - TCP 客户端
+├── worker.rs    # ModbusWorker - RoboPLC worker 实现
+├── operations.rs # 寄存器操作和地址解析
+├── parsing.rs   # 信号组编码/解码
+└── types.rs     # 共享类型（Backoff, ConnectionState等）
+```
+
+**支持的寄存器类型：**
+
+| 前缀 | 类型 | Modbus 代码 |
+|------|------|-------------|
+| `c` | Coil | 0x |
+| `d` | Discrete Input | 1x |
+| `i` | Input Register | 3x |
+| `h` | Holding Register | 4x |
 
 **关键结构：**
 
-#### ConnectionState
-连接状态枚举：
 ```rust
+// 连接状态
 pub enum ConnectionState {
-    Disconnected,  // 断开
-    Connecting,    // 连接中
-    Connected,     // 已连接
+    Disconnected,
+    Connecting,
+    Connected,
 }
-```
 
-#### Backoff
-指数退避策略实现：
-```rust
+// 指数退避
 struct Backoff {
     attempts: u32,
     next_delay_ms: u64,
 }
 
-fn next_delay(&mut self) -> Duration {
-    let jitter = (self.next_delay_ms / 10) * (self.attempts as u64 % 3);
-    let delay = self.next_delay_ms + jitter;
-    Duration::from_millis(delay)
-}
-```
-
-**配置：**
-- `BASE_TIMEOUT`：1 秒
-- `MAX_TIMEOUT`：30 秒
-- `BACKOFF_BASE_MS`：100 毫秒
-- `BACKOFF_MAX_MS`：30 秒
-
-#### OperationQueue
-操作队列，支持并发控制和请求跟踪：
-```rust
+// 操作队列
 struct OperationQueue<T> {
     pending: VecDeque<T>,
     in_flight: usize,
     max_in_flight: usize,
 }
-
-fn can_start(&self) -> bool {
-    self.in_flight < self.max_in_flight
-}
 ```
 
-**操作流程：**
-```
-接收 DeviceControl
-  │
-  ├── 验证是发给自己的设备
-  │  │
-  ├── 转换为 ModbusOp
-  │  │  │
-  ├── 压入操作队列
-  │  │  │
-  ├── 执行操作（如连接则先连接）
-  │  │  │
-  └── 发送 DeviceResponse
-```
+**连接配置：**
+- `BASE_TIMEOUT`：1 秒
+- `MAX_TIMEOUT`：30 秒
+- `BACKOFF_BASE_MS`：100 毫秒
+- `BACKOFF_MAX_MS`：30 秒
 
 **关键点：**
-- **指数退避**：连接失败时使用 Backoff 策略避免重连风暴
-- **并发控制**：使用 OperationQueue 限制并发操作数
-- **操作顺序**：FIFO 队列保证顺序
-- **状态维护**：通过 DeviceEvent 更新设备状态
+- **每设备一个 Worker**：独立管理连接和操作
+- **指数退避**：连接失败时避免重连风暴
+- **并发控制**：OperationQueue 限制并发操作数
+- **信号组操作**：支持批量读写连续寄存器
 
-#### ModbusOp
-操作类型枚举：
-```rust
-pub enum ModbusOp {
-    ReadHolding { address: u16, count: u16 },
-    WriteSingle { address: u16, value: u16 },
-    WriteMultiple { address: u16, values: Vec<u16> },
-    // 批量操作类型
-}
+---
+
+### HeartbeatWorker
+
+**职责：**
+- 独立检测所有设备是否在线
+- 通过发送 GetStatus 请求复用 ModbusWorker 连接
+- 广播 DeviceHeartbeat 消息（包含真实延迟）
+- 记录延迟到 latency_samples
+- 更新设备状态到共享变量
+
+**工作流程：**
+```
+循环检查每个设备
+   │
+   ├── 发送 GetStatus 请求
+   │
+   ├── 等待响应（带超时）
+   │
+   ├── 记录延迟
+   │
+   ├── 更新 device_states
+   │
+   └── 广播 DeviceHeartbeat
 ```
 
-#### 操作执行
-```rust
-fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
-    let client = match &self.connection {
-        Some(c) => c.clone(),
-        None => return error,
-    };
-
-    match op {
-        ModbusOp::ReadHolding { address, count } => {
-            // 读保持寄存器
-            self.read_holding(client, address, count)
-        }
-        ModbusOp::WriteSingle { address, value } => {
-            // 写单个寄存器
-            self.write_single(client, address, value)
-        }
-        // ... 其他操作类型
-    }
-}
-```
+**配置参数：**
+- `heartbeat_interval_sec`：心跳间隔（秒）
+- `heartbeat_timeout_sec`：响应超时（默认 5 秒）
 
 **关键点：**
-- **连接管理**：ensure_connected() 确保执行操作前已连接
-- **重试机制**：操作失败时自动重试（使用 Backoff）
-- **延迟监控**：记录操作延迟并上报
-- **错误处理**：失败时返回详细的错误信息
+- **轮询检测**：平均分配检查时间，避免同时发送大量请求
+- **状态变化事件**：连接状态变化时记录 DeviceEvent
+- **延迟采样**：成功响应时记录 LatencySample
+
+---
+
+### LatencyMonitor
+
+**职责：**
+- 接收设备心跳消息
+- 维护延迟统计窗口
+- 实现 3-sigma 异常检测
+- 发送延迟异常事件
+
+**算法参数：**
+- `LATENCY_WINDOW`：100 个样本
+- `SIGMA_THRESHOLD`：3.0
+- `MIN_ANOMALY_SAMPLES`：10
+
+**3-sigma 检测原理：**
+```
+异常阈值 = 平均值 + 3 × 标准差
+
+约 99.7% 的正态分布数据落在此范围内
+超过此值的数据点被判定为异常
+```
+
+**关键结构：**
+```rust
+struct LatencyStats {
+    samples: VecDeque<u64>,  // 滑动窗口
+    mean: f64,
+    variance: f64,
+}
+
+impl LatencyStats {
+    fn add_sample(&mut self, latency_us: u64);
+    fn is_anomaly(&self, latency_us: u64) -> bool;
+}
+```
+
+---
 
 ### HttpWorker
 
@@ -266,26 +297,47 @@ fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
 - 使用 actix-web 框架提供 HTTP API 端点
 - 查询系统状态
 - 提供设备管理接口
-- 更新配置（POST /api/config/reload）
 
-**实现方式：**
-- 使用 `AppState` 共享设备状态
-- GET 端点：读取 device_states
-- POST 端点：发送 DeviceControl 到 Hub
+**API 端点：**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/devices` | GET | 获取所有设备列表 |
+| `/api/devices/{id}/status` | GET | 获取单个设备状态 |
+| `/api/health` | GET | 系统健康检查 |
+| `/api/config` | GET | 当前配置 |
+| `/api/config/reload` | POST | 配置重载（由文件监控触发） |
+
+**健康状态：**
+- `healthy`：所有设备连接
+- `degraded`：部分设备断线
+- `unhealthy`：所有设备断线或无设备
 
 **关键点：**
-- **无状态设计**：HTTP Worker 不维护任何内部状态
-- **消息传递**：通过 hub_sender 可选字段发送消息
-- **响应式**：返回统一的 JSON 响应格式
+- **无状态设计**：不维护内部状态，从 Variables 读取
+- **共享状态**：通过 AppState 访问 device_states
 
-### ConfigUpdater
+---
+
+### ConfigLoader
 
 **职责：**
-- 监听 ConfigUpdate 消息（由 ConfigLoader 发送）
-- 解析配置 JSON
-- 更新 Variables 中的配置
-- 更新 worker_map（如果设备列表变化）
-- 必要时重启相关 Worker
+- 监视配置文件变化（使用 notify crate）
+- 配置变更时发送 ConfigUpdate 消息
+- 避免不必要的重载（内容对比）
+
+**工作流程：**
+```
+监控 config.toml
+   │
+   ├── 文件修改事件
+   │
+   ├── 读取新内容
+   │
+   ├── 对比内容（避免重复）
+   │
+   └── 发送 ConfigUpdate 消息
+```
 
 ## 🎯 优势
 
@@ -303,7 +355,7 @@ Worker 之间通过消息总线通信，不直接依赖
 
 ## 📝 相关文档
 
-- [架构概览](../architecture/架构概览.md)
+- [架构概览](../architecture.md)
 - [消息传递机制](../messaging/消息传递机制.md)
-- [配置管理](../configuration/配置管理.md)
-- [HTTP API](../http-api/http-api.md)
+- [配置管理](../configuration.md)
+- [HTTP API](../http-api.md)

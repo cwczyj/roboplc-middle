@@ -30,19 +30,37 @@ tcp_nodelay = true
 max_concurrent_ops = 3
 heartbeat_interval_sec = 30
 
-[[devices.register_mappings]]
-signal_name = "temperature"
-address = "h100"
-data_type = "U16"
-access = "rw"
-description = "温度传感器"
+[[devices.signal_groups]]
+name = "temperature_sensor"
+description = "温度传感器数据"
+register_address = "h100"
+register_count = 10
 
-[[devices.register_mappings]]
-signal_name = "pressure"
-address = "h101"
+[[devices.signal_groups.fields]]
+name = "temperature"
 data_type = "F32"
-access = "r"
-description = "压力传感器"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "humidity"
+data_type = "U16"
+offset = 2
+
+[[devices.signal_groups]]
+name = "status"
+description = "设备状态"
+register_address = "h200"
+register_count = 5
+
+[[devices.signal_groups.fields]]
+name = "running"
+data_type = "Bool"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "error_code"
+data_type = "U16"
+offset = 1
 
 [[devices]]
 id = "robot-arm-1"
@@ -86,34 +104,56 @@ heartbeat_interval_sec = 10
 | `addressing_mode` | String | 否 | "zero_based" | 地址模式: zero_based / one_based |
 | `byte_order` | String | 否 | "big_endian" | 字节序: big_endian / little_endian / little_endian_byte_swap / mid_big |
 | `tcp_nodelay` | bool | 否 | true | 是否启用 TCP_NODELAY |
-| `max_concurrent_ops` | usize | 否 | 3 | 最大并发操作数 |
-| `heartbeat_interval_sec` | u64 | 否 | 30 | 心跳检测间隔（秒） |
+| `max_concurrent_ops` | u8 | 否 | 3 | 最大并发操作数 |
+| `heartbeat_interval_sec` | u32 | 否 | 30 | 心跳检测间隔（秒） |
 
-### [[devices.register_mappings]] 寄存器映射
+### [[devices.signal_groups]] 信号组配置
+
+信号组（Signal Group）用于定义一批在连续寄存器范围内的相关信号，支持批量读写操作。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `signal_name` | String | 是 | 信号名称（用于 JSON-RPC 调用） |
-| `address` | String | 是 | Modbus 地址（格式见下文） |
-| `data_type` | String | 是 | 数据类型: U16/I16/U32/I32/F32/F64 |
-| `access` | String | 否 | 访问权限: r / w / rw（默认 rw） |
-| `description` | String | 否 | 描述信息 |
+| `name` | String | 是 | 信号组名称（用于 API 调用） |
+| `description` | String | 否 | 信号组描述 |
+| `register_address` | String | 是 | Modbus 起始地址（带前缀，如 "h100"） |
+| `register_count` | u16 | 是 | 寄存器数量 |
+| `fields` | Array | 是 | 字段映射列表 |
+
+### [[devices.signal_groups.fields]] 字段映射
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | String | 是 | 字段名称 |
+| `data_type` | String | 是 | 数据类型: U16/I16/U32/I32/F32/Bool |
+| `offset` | u16 | 是 | 寄存器偏移量（以寄存器为单位） |
 
 ## 地址格式
 
 Modbus 地址使用前缀表示寄存器类型：
 
-| 前缀 | 寄存器类型 | Modbus 地址范围 |
-|------|-----------|-----------------|
-| `c` | 线圈 (Coil) | 0x (00001-09999) |
-| `d` | 离散输入 (Discrete Input) | 1x (10001-19999) |
-| `i` | 输入寄存器 (Input Register) | 3x (30001-39999) |
-| `h` | 保持寄存器 (Holding Register) | 4x (40001-49999) |
+| 前缀 | 寄存器类型 | Modbus 代码 |
+|------|-----------|-------------|
+| `c` | 线圈 (Coil) | 0x |
+| `d` | 离散输入 (Discrete Input) | 1x |
+| `i` | 输入寄存器 (Input Register) | 3x |
+| `h` | 保持寄存器 (Holding Register) | 4x |
 
 **示例:**
 - `h100` = 保持寄存器地址 100
 - `i50` = 输入寄存器地址 50
 - `c10` = 线圈地址 10
+- `d5` = 离散输入地址 5
+
+## 数据类型
+
+| 类型 | 说明 | 占用寄存器数 |
+|------|------|-------------|
+| `U16` | 无符号 16 位整数 | 1 |
+| `I16` | 有符号 16 位整数 | 1 |
+| `U32` | 无符号 32 位整数 | 2 |
+| `I32` | 有符号 32 位整数 | 2 |
+| `F32` | 32 位浮点数 (IEEE 754) | 2 |
+| `Bool` | 布尔值 | 1 |
 
 ## 地址模式说明
 
@@ -139,4 +179,20 @@ Modbus 协议实际地址与配置地址相同。
 **常见设备字节序:**
 - 西门子 PLC: big_endian
 - 欧姆龙 PLC: little_endian
+- 三菱 PLC: little_endian_byte_swap
+
+## 信号组验证规则
+
+配置加载时会验证信号组的以下规则：
+
+1. **字段名称唯一**：同一信号组内字段名称不能重复
+2. **偏移量有效**：字段偏移量 + 数据类型所需寄存器数 ≤ register_count
+3. **地址格式正确**：register_address 必须使用有效的前缀和数字
+
+## 配置热重载
+
+ConfigLoader Worker 会监控配置文件变化：
+- 修改 `config.toml` 后自动重新加载
+- 使用内容对比避免不必要的重载
+- 发送 `ConfigUpdate` 消息通知其他 Worker
 - 三菱 PLC: little_endian_byte_swap
