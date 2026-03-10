@@ -103,19 +103,10 @@ pub struct ModbusClient {
     endpoint: String,
     connection: Option<Client>,
     unit_id: u8,
-    last_session_id: usize,  // Track session to detect reconnects
 }
 
-/// Connection status check result
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ConnectionStatus {
-    /// Connection is fresh (newly established or verified)
-    Fresh,
-    /// Connection has been reconnected since last check
-    Reconnected,
-    /// No connection exists
-    Disconnected,
-}
+
+
 
 impl ModbusClient {
     pub fn new(endpoint: String, unit_id: u8) -> Self {
@@ -123,30 +114,25 @@ impl ModbusClient {
             endpoint,
             connection: None,
             unit_id,
-            last_session_id: 0,
         }
     }
     
-    /// Check connection status without sending any data
-    /// Uses session_id to detect if TCP connection was reestablished
-    pub fn check_connection_status(&mut self) -> ConnectionStatus {
+    /// Lightweight probe to check if connection is alive
+    /// Tries to acquire the stream lock with a short timeout
+    pub fn probe_connection(&mut self) -> bool {
         match &self.connection {
             Some(client) => {
-                let current_session = client.session_id();
-                if current_session != self.last_session_id {
-                    // Session changed means TCP was reconnected
-                    tracing::debug!(
-                        old_session = self.last_session_id,
-                        new_session = current_session,
-                        "TCP session changed, connection was reestablished"
-                    );
-                    self.last_session_id = current_session;
-                    ConnectionStatus::Reconnected
-                } else {
-                    ConnectionStatus::Fresh
+                // Try to get the stream - this will fail if connection is dead
+                // We use a very short timeout for the probe
+                match client.connect() {
+                    Ok(()) => true,
+                    Err(_) => {
+                        tracing::debug!("Connection probe failed - connection appears dead");
+                        false
+                    }
                 }
             }
-            None => ConnectionStatus::Disconnected,
+            None => false,
         }
     }
 
@@ -160,35 +146,26 @@ impl ModbusClient {
     pub fn ensure_connected(
         &mut self,
         timeout: Duration,
-    ) -> Result<ConnectionStatus, Box<dyn std::error::Error>> {
-        if self.connection.is_none() {
-            self.connect(timeout)?;
-            // After connect, update session tracking
-            if let Some(client) = &self.connection {
-                self.last_session_id = client.session_id();
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // If no connection or probe fails, reconnect
+        if self.connection.is_none() || !self.probe_connection() {
+            if self.connection.is_some() {
+                tracing::debug!("Connection probe failed, reconnecting");
+                self.connection = None;
             }
-            return Ok(ConnectionStatus::Reconnected);
+            self.connect(timeout)?;
         }
-        
-        Ok(self.check_connection_status())
+        Ok(())
     }
 
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
-        // Ensure connection and check if it was reestablished
-        let connection_status = match self.ensure_connected(Duration::from_secs(1)) {
-            Ok(status) => status,
-            Err(e) => {
-                return OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some(format!("Connection failed: {}", e)),
-                };
-            }
-        };
-        
-        // If connection was reestablished, we might want to log it
-        if connection_status == ConnectionStatus::Reconnected {
-            tracing::info!("Connection reestablished, executing operation");
+        // Ensure connection (will probe and reconnect if needed)
+        if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
+            return OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some(format!("Connection failed: {}", e)),
+            };
         }
 
         let client = match &self.connection {

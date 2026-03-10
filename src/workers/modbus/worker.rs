@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
     encode_fields_to_registers, parse_register_address, parse_signal_group_fields, Backoff,
-    ConnectionState, ConnectionStatus, ModbusClient, ModbusOp, OperationQueue, OperationResult, QueuedOperation,
+    ConnectionState, ModbusClient, ModbusOp, OperationQueue, OperationResult, QueuedOperation,
     RegisterType, TimeoutHandler, TransactionId,
 };
 
@@ -153,16 +153,16 @@ impl ModbusWorker {
         true
     }
     
-    /// Execute operation with elegant session-based connection detection
+    /// Execute operation with lightweight connection probe
     /// 
-    /// Uses roboplc Client's session_id to detect TCP reconnects without sending
-    /// any network traffic. Much more efficient than ping-based detection.
-    fn execute_operation_with_session_check(
+    /// Before each operation, probe connection to verify it's alive.
+    /// If probe fails, reconnect then execute the actual operation.
+    fn execute_operation_with_probe(
         &mut self, 
         context: &Context<Message, Variables>,
         modbus_op: &ModbusOp
     ) -> OperationResult {
-        // Ensure connection exists and check its status
+        // Ensure connection (will probe and reconnect if needed via ensure_connected in client)
         if !self.ensure_connected(context) {
             return OperationResult {
                 success: false,
@@ -171,32 +171,7 @@ impl ModbusWorker {
             };
         }
         
-        // Check if TCP session was reestablished (e.g., server restarted)
-        // This uses session_id tracking, no network traffic needed!
-        if let Some(client) = &mut self.client {
-            match client.check_connection_status() {
-                ConnectionStatus::Reconnected => {
-                    tracing::info!(device_id = %self.device.id, "TCP session reestablished, operation may use fresh connection");
-                }
-                ConnectionStatus::Disconnected => {
-                    // This shouldn't happen if ensure_connected succeeded
-                    tracing::warn!(device_id = %self.device.id, "Connection lost after ensure_connected");
-                    return OperationResult {
-                        success: false,
-                        data: JsonValue::Null,
-                        error: Some("Connection lost".to_string()),
-                    };
-                }
-                ConnectionStatus::Fresh => {
-                    // Normal case, connection is stable
-                }
-            }
-        }
-        
-        // Execute operation
-        // Note: We rely on session_id detection above to catch connection changes.
-        // If a race condition occurs (connection drops between check and execute),
-        // the operation will fail and the next request will detect it via session_id.
+        // Execute the actual operation
         if let Some(client) = &mut self.client {
             client.execute_operation(modbus_op)
         } else {
@@ -453,7 +428,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .map(|g| (g.fields.clone(), self.device.byte_order.clone()));
 
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = self.execute_operation_with_session_check(context, &modbus_op);
+                            let result = self.execute_operation_with_probe(context, &modbus_op);
                             
                             if result.success {
                                 if let Some(latency) =
@@ -521,7 +496,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = self.execute_operation_with_session_check(context, &modbus_op);
+                            let result = self.execute_operation_with_probe(context, &modbus_op);
                             
                             if result.success {
                                 if let Some(latency) =
