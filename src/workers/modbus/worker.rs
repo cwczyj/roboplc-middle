@@ -6,13 +6,12 @@ use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
 use roboplc::controller::prelude::*;
 use roboplc::event_matches;
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
-    encode_fields_to_registers, parse_register_address, parse_signal_group_fields, Backoff,
-    ConnectionState, ModbusClient, ModbusOp, OperationQueue, OperationResult, QueuedOperation,
-    RegisterType, TimeoutHandler, TransactionId,
+    encode_fields_for_partial_write, encode_fields_to_registers, parse_register_address,
+    parse_signal_group_fields, Backoff, ConnectionState, ModbusClient, ModbusOp,
+    OperationQueue, OperationResult, QueuedOperation, RegisterType, TimeoutHandler,
 };
 
 // ==================== ModbusWorker ====================
@@ -474,36 +473,170 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .get("group_name")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = self.execute_operation_with_probe(context, &modbus_op);
-                            
-                            if result.success {
-                                if let Some(latency) =
-                                    result.data.get("latency_us").and_then(|v| v.as_u64())
-                                {
-                                    self.record_communication(context, latency);
+                        // Find the signal group configuration
+                        let group = self
+                            .device
+                            .signal_groups
+                            .iter()
+                            .find(|g| g.name == group_name);
+
+                        let group = match group {
+                            Some(g) => g,
+                            None => {
+                                send_response(
+                                    false,
+                                    JsonValue::Null,
+                                    Some(format!("Invalid signal group: {}", group_name)),
+                                );
+                                continue;
+                            }
+                        };
+
+                        // Parse register address
+                        let (reg_type, base_addr) = match parse_register_address(&group.register_address) {
+                            Some(result) => result,
+                            None => {
+                                send_response(
+                                    false,
+                                    JsonValue::Null,
+                                    Some(format!("Invalid register address: {}", group.register_address)),
+                                );
+                                continue;
+                            }
+                        };
+
+                        // Check for read-only registers
+                        match reg_type {
+                            RegisterType::Discrete | RegisterType::Input => {
+                                send_response(
+                                    false,
+                                    JsonValue::Null,
+                                    Some("Cannot write to read-only register type".to_string()),
+                                );
+                                continue;
+                            }
+                            _ => {}
+                        }
+
+                        // Handle field-based partial write vs raw values
+                        if let Some(fields_data) = params.get("data").and_then(|v| v.as_object()) {
+                            // Per-field write: encode each field and write individually
+                            let encoded_fields = encode_fields_for_partial_write(
+                                fields_data,
+                                &group.fields,
+                                self.device.byte_order.clone(),
+                            );
+
+                            if encoded_fields.is_empty() {
+                                send_response(
+                                    false,
+                                    JsonValue::Null,
+                                    Some("No valid fields to write".to_string()),
+                                );
+                                continue;
+                            }
+
+                            // Execute write for each field
+                            let mut all_success = true;
+                            let mut total_latency_us: u64 = 0;
+                            let mut last_error: Option<String> = None;
+                            let mut write_count = 0;
+
+                            for encoded in encoded_fields {
+                                let address = base_addr + encoded.offset;
+                                let modbus_op = match reg_type {
+                                    RegisterType::Coil => {
+                                        // Convert to bool values for coils
+                                        let values: Vec<bool> = encoded.registers.iter().map(|&v| v != 0).collect();
+                                        if values.len() == 1 {
+                                            ModbusOp::WriteSingleCoil { address, value: values[0] }
+                                        } else {
+                                            ModbusOp::WriteMultipleCoils { address, values }
+                                        }
+                                    }
+                                    RegisterType::Holding => {
+                                        if encoded.registers.len() == 1 {
+                                            ModbusOp::WriteSingle { address, value: encoded.registers[0] }
+                                        } else {
+                                            ModbusOp::WriteMultiple { address, values: encoded.registers }
+                                        }
+                                    }
+                                    _ => unreachable!(), // Already filtered above
+                                };
+
+                                let result = self.execute_operation_with_probe(context, &modbus_op);
+                                write_count += 1;
+
+                                if result.success {
+                                    if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                                        total_latency_us += latency;
+                                    }
+                                } else {
+                                    all_success = false;
+                                    last_error = result.error.clone();
+                                    tracing::warn!(
+                                        device_id = %self.device.id,
+                                        field = %encoded.name,
+                                        error = ?last_error,
+                                        "Failed to write field"
+                                    );
                                 }
                             }
+
+                            // Record total latency
+                            if total_latency_us > 0 {
+                                self.record_communication(context, total_latency_us);
+                            }
+
                             send_response(
-                                result.success,
+                                all_success,
                                 serde_json::json!({
                                     "group_name": group_name,
-                                    "result": result.data
+                                    "result": {
+                                        "writes": write_count,
+                                        "latency_us": total_latency_us
+                                    }
                                 }),
-                                result.error,
+                                last_error,
                             );
+                        } else if let Some(_raw_values) = params.get("values").and_then(|v| v.as_array()) {
+                            // Raw values: use existing batch write logic
+                            if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
+                                let result = self.execute_operation_with_probe(context, &modbus_op);
+
+                                if result.success {
+                                    if let Some(latency) =
+                                        result.data.get("latency_us").and_then(|v| v.as_u64())
+                                    {
+                                        self.record_communication(context, latency);
+                                    }
+                                }
+                                send_response(
+                                    result.success,
+                                    serde_json::json!({
+                                        "group_name": group_name,
+                                        "result": result.data
+                                    }),
+                                    result.error,
+                                );
+                            } else {
+                                send_response(
+                                    false,
+                                    JsonValue::Null,
+                                    Some(format!("Invalid signal group: {}", group_name)),
+                                );
+                            }
                         } else {
                             send_response(
                                 false,
                                 JsonValue::Null,
-                                Some(format!("Invalid signal group: {}", group_name)),
+                                Some("Missing 'data' or 'values' parameter".to_string()),
                             );
                         }
                     }
                 }
             }
         }
-
         tracing::info!(device_id = %self.device.id, "ModbusWorker stopped");
         Ok(())
     }

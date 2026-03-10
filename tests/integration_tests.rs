@@ -42,7 +42,7 @@ register_count = 5
 
 [[devices.signal_groups.fields]]
 name = "test_signal"
-data_type = "U16"
+data_type = "u16"
 offset = 0
 "#,
         rpc_port, http_port

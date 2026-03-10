@@ -25,6 +25,102 @@ pub struct ParsedField {
     pub data_type: DataType,
 }
 
+/// Encoded field value for Modbus write
+/// 
+/// Represents a single field's encoded register values with its offset,
+/// enabling per-field write operations.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EncodedField {
+    /// Field name from input data
+    pub name: String,
+    /// Register offset within the signal group
+    pub offset: u16,
+    /// Encoded register values for this field
+    pub registers: Vec<u16>,
+}
+
+/// Encode a single field to register values
+///
+/// This function encodes one field value to Modbus register format.
+/// Used for per-field write operations to avoid affecting other fields.
+///
+/// # Arguments
+///
+/// * `field_name` - Name of the field to encode
+/// * `field_value` - JSON value for the field
+/// * `fields` - Field mappings defining how to encode each field
+/// * `byte_order` - Byte order for multi-register types
+///
+/// # Returns
+///
+/// `EncodedField` with offset and register values, or None if field not found.
+pub fn encode_single_field(
+    field_name: &str,
+    field_value: &serde_json::Value,
+    fields: &[FieldMapping],
+    byte_order: ByteOrder,
+) -> Option<EncodedField> {
+    // Find the field mapping
+    let field = fields.iter().find(|f| f.name == field_name)?;
+
+    // Convert JSON value to f64
+    let value = field_value.as_f64()?;
+
+    // Convert value to bytes using DataTypeConverter
+    let bytes =
+        <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+            value,
+            field.data_type.clone(),
+            byte_order,
+        )?;
+
+    // Convert bytes to registers
+    let registers = bytes_to_registers(&bytes);
+
+    Some(EncodedField {
+        name: field_name.to_string(),
+        offset: field.offset,
+        registers,
+    })
+}
+
+/// Encode multiple fields to separate register writes
+///
+/// This function encodes each provided field independently, returning
+/// a list of EncodedField suitable for individual write operations.
+///
+/// # Arguments
+///
+/// * `fields_data` - Map of field name to value
+/// * `field_mappings` - Field mappings defining how to encode each field
+/// * `byte_order` - Byte order for multi-register types
+///
+/// # Returns
+///
+/// Vector of `EncodedField`, one per input field. Fields that fail to encode
+/// are silently skipped.
+pub fn encode_fields_for_partial_write(
+    fields_data: &serde_json::Map<String, serde_json::Value>,
+    field_mappings: &[FieldMapping],
+    byte_order: ByteOrder,
+) -> Vec<EncodedField> {
+    let mut results = Vec::with_capacity(fields_data.len());
+
+    for (field_name, field_value) in fields_data {
+        if let Some(encoded) = encode_single_field(
+            field_name,
+            field_value,
+            field_mappings,
+            byte_order.clone(),
+        ) {
+            results.push(encoded);
+        }
+    }
+
+    results
+}
+
+
 /// Parse SignalGroup fields from register values
 ///
 /// This function implements the batch read + memory parse strategy:
@@ -533,5 +629,99 @@ mod tests {
 
         let registers = result.unwrap();
         assert_eq!(registers, vec![0, 0, 0, 123]);
+    }
+
+    // =========================================================================
+    // Tests for partial write encoding (encode_single_field, encode_fields_for_partial_write)
+    // =========================================================================
+
+    #[test]
+    fn encode_single_field_u16() {
+        let fields = vec![make_field("speed", DataType::U16, 0)];
+        let result = encode_single_field("speed", &serde_json::json!(1500), &fields, ByteOrder::BigEndian);
+
+        assert!(result.is_some());
+        let encoded = result.unwrap();
+        assert_eq!(encoded.name, "speed");
+        assert_eq!(encoded.offset, 0);
+        assert_eq!(encoded.registers, vec![1500]);
+    }
+
+    #[test]
+    fn encode_single_field_f32() {
+        let fields = vec![make_field("temperature", DataType::F32, 2)];
+        let result = encode_single_field("temperature", &serde_json::json!(25.5), &fields, ByteOrder::BigEndian);
+
+        assert!(result.is_some());
+        let encoded = result.unwrap();
+        assert_eq!(encoded.name, "temperature");
+        assert_eq!(encoded.offset, 2);
+        assert_eq!(encoded.registers.len(), 2); // F32 uses 2 registers
+    }
+
+    #[test]
+    fn encode_single_field_unknown_returns_none() {
+        let fields = vec![make_field("speed", DataType::U16, 0)];
+        let result = encode_single_field("unknown", &serde_json::json!(100), &fields, ByteOrder::BigEndian);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn encode_fields_for_partial_write_multiple_fields() {
+        let fields = vec![
+            make_field("speed", DataType::U16, 0),
+            make_field("status", DataType::U16, 1),
+            make_field("direction", DataType::Bool, 2),
+            make_field("error_code", DataType::U16, 3),
+            make_field("fault_flag", DataType::Bool, 4),
+        ];
+
+        let mut data = serde_json::Map::new();
+        // Only write speed field
+        data.insert("speed".to_string(), serde_json::json!(1100));
+
+        let result = encode_fields_for_partial_write(&data, &fields, ByteOrder::BigEndian);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "speed");
+        assert_eq!(result[0].offset, 0);
+        assert_eq!(result[0].registers, vec![1100]);
+    }
+
+    #[test]
+    fn encode_fields_for_partial_write_preserves_field_offset() {
+        let fields = vec![
+            make_field("field_a", DataType::U16, 0),
+            make_field("field_b", DataType::U16, 5),
+            make_field("field_c", DataType::U16, 10),
+        ];
+
+        let mut data = serde_json::Map::new();
+        // Only write field_b
+        data.insert("field_b".to_string(), serde_json::json!(42));
+
+        let result = encode_fields_for_partial_write(&data, &fields, ByteOrder::BigEndian);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "field_b");
+        assert_eq!(result[0].offset, 5); // Offset should be preserved
+        assert_eq!(result[0].registers, vec![42]);
+    }
+
+    #[test]
+    fn encode_fields_for_partial_write_skips_unknown() {
+        let fields = vec![make_field("known_field", DataType::U16, 0)];
+
+        let mut data = serde_json::Map::new();
+        data.insert("unknown_field".to_string(), serde_json::json!(100));
+        data.insert("known_field".to_string(), serde_json::json!(200));
+
+        let result = encode_fields_for_partial_write(&data, &fields, ByteOrder::BigEndian);
+
+        // Only known_field should be encoded
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "known_field");
+        assert_eq!(result[0].registers, vec![200]);
     }
 }
