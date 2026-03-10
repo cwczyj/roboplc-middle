@@ -24,8 +24,6 @@ pub struct ModbusWorker {
     client: Option<ModbusClient>,
     connection_state: ConnectionState,
     last_communication: Option<SystemTime>,
-    pending_transactions: HashMap<u16, TransactionId>,
-    #[allow(dead_code)]
     operation_queue: OperationQueue<QueuedOperation>,
     backoff: Backoff,
     timeout_handler: TimeoutHandler,
@@ -40,22 +38,10 @@ impl ModbusWorker {
             client: None,
             connection_state: ConnectionState::Disconnected,
             last_communication: None,
-            pending_transactions: HashMap::new(),
             operation_queue: OperationQueue::new(max_in_flight),
             backoff: Backoff::new(),
             timeout_handler: TimeoutHandler::new(),
         }
-    }
-
-    fn track_transaction(&mut self) -> TransactionId {
-        let tx = TransactionId::new();
-        self.pending_transactions.insert(tx.id, tx);
-        tx
-    }
-
-    fn prune_stale_transactions(&mut self, max_age: Duration) {
-        self.pending_transactions
-            .retain(|_, tx| tx.elapsed() <= max_age);
     }
 
     fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
@@ -304,11 +290,6 @@ impl ModbusWorker {
         }
     }
 
-    /// Parse register address string (e.g., "h100" -> 100)
-    fn parse_address(&self, addr_str: &str) -> Option<u16> {
-        let (_, addr) = parse_register_address(addr_str)?;
-        Some(addr)
-    }
 }
 
 // ==================== Worker trait 实现 ====================
@@ -327,8 +308,6 @@ impl Worker<Message, Variables> for ModbusWorker {
             if !context.is_online() {
                 break;
             }
-
-            self.prune_stale_transactions(Duration::from_secs(5));
 
             // Handle DeviceControl messages
             if let Message::DeviceControl {
@@ -561,7 +540,6 @@ mod tests {
         assert!(worker.client.is_none());
         assert_eq!(worker.connection_state, ConnectionState::Disconnected);
         assert!(worker.last_communication.is_none());
-        assert!(worker.pending_transactions.is_empty());
     }
 
     #[test]
@@ -603,15 +581,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_address_handles_prefixes() {
-        let worker = ModbusWorker::new(test_device());
-
-        assert_eq!(worker.parse_address("h100"), Some(100));
-        assert_eq!(worker.parse_address("H200"), Some(200));
-        assert_eq!(worker.parse_address("i50"), Some(50));
-        assert_eq!(worker.parse_address("c10"), Some(10));
-        assert_eq!(worker.parse_address("d5"), Some(5));
-        assert_eq!(worker.parse_address("100"), Some(100)); // No prefix = holding
+    fn parse_register_address_handles_prefixes() {
+        // Test the standalone parse_register_address function
+        assert_eq!(parse_register_address("h100").map(|(_, addr)| addr), Some(100));
+        assert_eq!(parse_register_address("H200").map(|(_, addr)| addr), Some(200));
+        assert_eq!(parse_register_address("i50").map(|(_, addr)| addr), Some(50));
+        assert_eq!(parse_register_address("c10").map(|(_, addr)| addr), Some(10));
+        assert_eq!(parse_register_address("d5").map(|(_, addr)| addr), Some(5));
+        assert_eq!(parse_register_address("100").map(|(_, addr)| addr), Some(100)); // No prefix = holding
     }
 
     #[test]
