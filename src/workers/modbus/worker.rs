@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
     encode_fields_to_registers, parse_register_address, parse_signal_group_fields, Backoff,
-    ConnectionState, ModbusClient, ModbusOp, OperationQueue, OperationResult, QueuedOperation,
+    ConnectionState, ConnectionStatus, ModbusClient, ModbusOp, OperationQueue, OperationResult, QueuedOperation,
     RegisterType, TimeoutHandler, TransactionId,
 };
 
@@ -153,13 +153,47 @@ impl ModbusWorker {
         true
     }
     
-    /// Execute operation with automatic retry on connection failure
+    /// Execute operation with elegant session-based connection detection
+    /// 
+    /// Uses roboplc Client's session_id to detect TCP reconnects without sending
+    /// any network traffic. Much more efficient than ping-based detection.
     fn execute_with_retry(
         &mut self, 
         context: &Context<Message, Variables>,
         modbus_op: &ModbusOp
     ) -> OperationResult {
-        // First attempt
+        // Ensure connection exists and check its status
+        if !self.ensure_connected(context) {
+            return OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Failed to establish connection".to_string()),
+            };
+        }
+        
+        // Check if TCP session was reestablished (e.g., server restarted)
+        // This uses session_id tracking, no network traffic needed!
+        if let Some(client) = &mut self.client {
+            match client.check_connection_status() {
+                ConnectionStatus::Reconnected => {
+                    tracing::info!(device_id = %self.device.id, "TCP session reestablished, operation may use fresh connection");
+                }
+                ConnectionStatus::Disconnected => {
+                    // This shouldn't happen if ensure_connected succeeded
+                    tracing::warn!(device_id = %self.device.id, "Connection lost after ensure_connected");
+                    return OperationResult {
+                        success: false,
+                        data: JsonValue::Null,
+                        error: Some("Connection lost".to_string()),
+                    };
+                }
+                ConnectionStatus::Fresh => {
+                    // Normal case, connection is stable
+                }
+            }
+        }
+        
+        // Execute operation
         let result = if let Some(client) = &mut self.client {
             client.execute_operation(modbus_op)
         } else {
@@ -170,27 +204,20 @@ impl ModbusWorker {
             };
         };
         
-        // If failed with connection error, reconnect and retry once
+        // If operation failed with connection error, retry once
+        // This handles race conditions where connection drops during operation
         if !result.success {
             if let Some(ref error) = result.error {
                 if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
-                    tracing::warn!(device_id = %self.device.id, error = %error, "Operation failed, attempting reconnect and retry");
+                    tracing::warn!(device_id = %self.device.id, error = %error, "Operation failed, connection may be stale, retrying");
                     
-                    // Drop stale connection and reconnect
+                    // Drop and recreate connection
                     self.client = None;
                     self.update_connection_state(ConnectionState::Disconnected, context);
                     
                     if self.ensure_connected(context) {
-                        // Retry the operation
                         if let Some(client) = &mut self.client {
-                            tracing::info!(device_id = %self.device.id, "Retrying operation after reconnect");
-                            let retry_result = client.execute_operation(modbus_op);
-                            if retry_result.success {
-                                tracing::info!(device_id = %self.device.id, "Retry successful");
-                            } else {
-                                tracing::warn!(device_id = %self.device.id, "Retry failed");
-                            }
-                            return retry_result;
+                            return client.execute_operation(modbus_op);
                         }
                     }
                 }

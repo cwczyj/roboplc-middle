@@ -103,6 +103,18 @@ pub struct ModbusClient {
     endpoint: String,
     connection: Option<Client>,
     unit_id: u8,
+    last_session_id: usize,  // Track session to detect reconnects
+}
+
+/// Connection status check result
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ConnectionStatus {
+    /// Connection is fresh (newly established or verified)
+    Fresh,
+    /// Connection has been reconnected since last check
+    Reconnected,
+    /// No connection exists
+    Disconnected,
 }
 
 impl ModbusClient {
@@ -111,6 +123,30 @@ impl ModbusClient {
             endpoint,
             connection: None,
             unit_id,
+            last_session_id: 0,
+        }
+    }
+    
+    /// Check connection status without sending any data
+    /// Uses session_id to detect if TCP connection was reestablished
+    pub fn check_connection_status(&mut self) -> ConnectionStatus {
+        match &self.connection {
+            Some(client) => {
+                let current_session = client.session_id();
+                if current_session != self.last_session_id {
+                    // Session changed means TCP was reconnected
+                    tracing::debug!(
+                        old_session = self.last_session_id,
+                        new_session = current_session,
+                        "TCP session changed, connection was reestablished"
+                    );
+                    self.last_session_id = current_session;
+                    ConnectionStatus::Reconnected
+                } else {
+                    ConnectionStatus::Fresh
+                }
+            }
+            None => ConnectionStatus::Disconnected,
         }
     }
 
@@ -124,33 +160,40 @@ impl ModbusClient {
     pub fn ensure_connected(
         &mut self,
         timeout: Duration,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // Only establish connection if it doesn't exist
-        // Connection health is verified during actual operations, not here
+    ) -> Result<ConnectionStatus, Box<dyn std::error::Error>> {
         if self.connection.is_none() {
             self.connect(timeout)?;
+            // After connect, update session tracking
+            if let Some(client) = &self.connection {
+                self.last_session_id = client.session_id();
+            }
+            return Ok(ConnectionStatus::Reconnected);
         }
-        Ok(())
+        
+        Ok(self.check_connection_status())
     }
 
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
-        // Ensure connection exists before executing operation
-        // Connection health will be verified during the actual Modbus operation
-        if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
-            return OperationResult {
-                success: false,
-                data: JsonValue::Null,
-                error: Some(format!("Connection failed: {}", e)),
-            };
+        // Ensure connection and check if it was reestablished
+        let connection_status = match self.ensure_connected(Duration::from_secs(1)) {
+            Ok(status) => status,
+            Err(e) => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some(format!("Connection failed: {}", e)),
+                };
+            }
+        };
+        
+        // If connection was reestablished, we might want to log it
+        if connection_status == ConnectionStatus::Reconnected {
+            tracing::info!("Connection reestablished, executing operation");
         }
-
-        println!("Executing operation: {:?}", op);
 
         let client = match &self.connection {
             Some(c) => c.clone(),
             None => {
-                // This should not happen if ensure_connected succeeded,
-                // but we keep this as a safety fallback
                 return OperationResult {
                     success: false,
                     data: JsonValue::Null,
