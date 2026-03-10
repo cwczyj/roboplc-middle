@@ -117,22 +117,72 @@ impl ModbusClient {
         }
     }
     
-    /// Lightweight probe to check if connection is alive
-    /// Tries to acquire the stream lock with a short timeout
+    /// Probe connection by sending actual Modbus request
+    /// 
+    /// This is the only reliable way to detect if TCP connection is still alive.
+    /// We read register 0 (which may not exist, but we'll get a response indicating connection status)
     pub fn probe_connection(&mut self) -> bool {
         match &self.connection {
-            Some(client) => {
-                // Try to get the stream - this will fail if connection is dead
-                // We use a very short timeout for the probe
-                match client.connect() {
-                    Ok(()) => true,
-                    Err(_) => {
-                        tracing::debug!("Connection probe failed - connection appears dead");
+            Some(_client) => {
+                // Try to perform an actual Modbus read operation
+                // This will fail quickly if connection is dead (RST received) or timeout if no response
+                let probe_op = ModbusOp::ReadHolding { address: 0, count: 1 };
+                let result = self.execute_operation_without_probe(&probe_op);
+                
+                // If we got any response (success or Modbus error), connection is alive
+                // Only consider connection dead on IO errors (connection closed/broken)
+                if result.success {
+                    tracing::debug!("Connection probe succeeded");
+                    true
+                } else if let Some(ref error) = result.error {
+                    if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
+                        tracing::debug!("Connection probe failed - connection broken: {}", error);
                         false
+                    } else {
+                        // Modbus error (like illegal address) means connection is alive
+                        tracing::debug!("Connection probe got Modbus error (connection alive): {}", error);
+                        true
                     }
+                } else {
+                    false
                 }
             }
             None => false,
+        }
+    }
+    
+    /// Execute operation without probing (internal use)
+    fn execute_operation_without_probe(&self, op: &ModbusOp) -> OperationResult {
+        let client = match &self.connection {
+            Some(c) => c.clone(),
+            None => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some("Not connected".to_string()),
+                }
+            }
+        };
+
+        match op {
+            &ModbusOp::ReadCoil { address, count } => self.read_registers(&client, ModbusRegisterKind::Coil, address, count),
+            &ModbusOp::ReadDiscrete { address, count } => self.read_registers(&client, ModbusRegisterKind::Discrete, address, count),
+            &ModbusOp::ReadInput { address, count } => self.read_registers(&client, ModbusRegisterKind::Input, address, count),
+            &ModbusOp::ReadHolding { address, count } => self.read_registers(&client, ModbusRegisterKind::Holding, address, count),
+            &ModbusOp::WriteSingle { address, value } => {
+                self.write_registers(&client, address, &[WriteValue::Holding(value)])
+            }
+            &ModbusOp::WriteMultiple { address, ref values } => {
+                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Holding(v)).collect();
+                self.write_registers(&client, address, &write_values)
+            }
+            &ModbusOp::WriteSingleCoil { address, value } => {
+                self.write_registers(&client, address, &[WriteValue::Coil(value)])
+            }
+            &ModbusOp::WriteMultipleCoils { address, ref values } => {
+                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Coil(v)).collect();
+                self.write_registers(&client, address, &write_values)
+            }
         }
     }
 
@@ -147,20 +197,38 @@ impl ModbusClient {
         &mut self,
         timeout: Duration,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // If no connection or probe fails, reconnect
-        if self.connection.is_none() || !self.probe_connection() {
-            if self.connection.is_some() {
-                tracing::debug!("Connection probe failed, reconnecting");
-                self.connection = None;
-            }
+        // If no connection, create one
+        if self.connection.is_none() {
+            tracing::debug!("No connection, creating new one");
             self.connect(timeout)?;
         }
         Ok(())
     }
+    
+    /// Ensure connection with probe - for use before critical operations
+    pub fn ensure_connected_with_probe(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // First ensure we have a connection object
+        if self.connection.is_none() {
+            self.connect(timeout)?;
+            return Ok(());
+        }
+        
+        // Probe the connection - if it fails, reconnect
+        if !self.probe_connection() {
+            tracing::info!("Connection probe failed, reconnecting");
+            self.connection = None;
+            self.connect(timeout)?;
+        }
+        
+        Ok(())
+    }
 
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
-        // Ensure connection (will probe and reconnect if needed)
-        if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
+        // Ensure connection with probe - detects dead connections
+        if let Err(e) = self.ensure_connected_with_probe(Duration::from_secs(1)) {
             return OperationResult {
                 success: false,
                 data: JsonValue::Null,
