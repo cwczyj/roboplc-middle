@@ -121,35 +121,36 @@ impl ModbusClient {
         Ok(())
     }
 
-    fn reconnect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(client) = &self.connection {
-            client.reconnect();
-        }
-        self.connection = None;
-        self.connect(timeout)
-    }
-
     pub fn ensure_connected(
         &mut self,
         timeout: Duration,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        match &self.connection {
-            Some(client) => {
-                if client.connect().is_err() {
-                    self.reconnect(timeout)?;
-                }
-            }
-            None => {
-                self.connect(timeout)?;
-            }
+        // Only establish connection if it doesn't exist
+        // Connection health is verified during actual operations, not here
+        if self.connection.is_none() {
+            self.connect(timeout)?;
         }
         Ok(())
     }
 
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
+        // Ensure connection exists before executing operation
+        // Connection health will be verified during the actual Modbus operation
+        if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
+            return OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some(format!("Connection failed: {}", e)),
+            };
+        }
+
+        println!("Executing operation: {:?}", op);
+
         let client = match &self.connection {
             Some(c) => c.clone(),
             None => {
+                // This should not happen if ensure_connected succeeded,
+                // but we keep this as a safety fallback
                 return OperationResult {
                     success: false,
                     data: JsonValue::Null,
@@ -696,7 +697,7 @@ mod tests {
     fn execute_operation_routes_read_coil() {
         let mut client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
 
-        // Without connection, should return error
+        // Without connection, should return connection error
         let op = ModbusOp::ReadCoil {
             address: 0,
             count: 10,
@@ -704,7 +705,8 @@ mod tests {
         let result = client.execute_operation(&op);
 
         assert!(!result.success);
-        assert_eq!(result.error, Some("Not connected".to_string()));
+        // Error should contain "Connection failed" prefix
+        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
     }
 
     /// Test execute_operation routes ReadDiscrete to read_registers
@@ -719,7 +721,7 @@ mod tests {
         let result = client.execute_operation(&op);
 
         assert!(!result.success);
-        assert_eq!(result.error, Some("Not connected".to_string()));
+        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
     }
 
     /// Test execute_operation routes ReadInput to read_registers
@@ -734,7 +736,7 @@ mod tests {
         let result = client.execute_operation(&op);
 
         assert!(!result.success);
-        assert_eq!(result.error, Some("Not connected".to_string()));
+        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
     }
 
     /// Test execute_operation routes ReadHolding to read_registers
@@ -749,14 +751,12 @@ mod tests {
         let result = client.execute_operation(&op);
 
         assert!(!result.success);
-        assert_eq!(result.error, Some("Not connected".to_string()));
+        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
     }
 
     /// Test write_registers validation rejects empty values
     #[test]
     fn write_registers_rejects_empty_values() {
-        let client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
-
         // Create a mock client for testing (we can't connect, but we can test validation)
         // This test verifies the empty check logic directly
         let empty_values: Vec<WriteValue> = vec![];

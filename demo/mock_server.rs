@@ -183,7 +183,7 @@ impl MockModbusServer {
         running: Arc<AtomicBool>,
         registers: Arc<std::sync::Mutex<MockModbusState>>,
     ) {
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+        let _ = stream.set_read_timeout(None);
         let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
         while running.load(Ordering::SeqCst) {

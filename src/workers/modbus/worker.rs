@@ -129,7 +129,7 @@ impl ModbusWorker {
     fn ensure_connected(&mut self, context: &Context<Message, Variables>) -> bool {
         let timeout = self.timeout_handler.timeout();
 
-
+        // Only establish connection if it doesn't exist
         if self.client.is_none() {
             self.update_connection_state(ConnectionState::Connecting, context);
             if let Err(e) = self.connect(timeout) {
@@ -147,34 +147,57 @@ impl ModbusWorker {
             }
         }
 
-        let reconnect_failed = if let Some(client) = &mut self.client {
-            client.ensure_connected(timeout).is_err()
-        } else {
-            false
-        };
-
-        if reconnect_failed {
-            self.client = None;
-            self.update_connection_state(ConnectionState::Connecting, context);
-            if let Err(e) = self.connect(timeout) {
-                tracing::warn!(device_id = %self.device.id, error = %e, "Reconnection failed");
-                self.timeout_handler.on_timeout();
-                if self.timeout_handler.is_at_max() {
-                    tracing::warn!(
-                        device_id = %self.device.id,
-                        timeout_s = self.timeout_handler.timeout().as_secs(),
-                        "Adaptive Modbus timeout reached max"
-                    );
-                }
-                self.update_connection_state(ConnectionState::Disconnected, context);
-                return false;
-            }
-        }
-
         self.update_connection_state(ConnectionState::Connected, context);
         self.timeout_handler.on_success();
         self.backoff.reset();
         true
+    }
+    
+    /// Execute operation with automatic retry on connection failure
+    fn execute_with_retry(
+        &mut self, 
+        context: &Context<Message, Variables>,
+        modbus_op: &ModbusOp
+    ) -> OperationResult {
+        // First attempt
+        let result = if let Some(client) = &mut self.client {
+            client.execute_operation(modbus_op)
+        } else {
+            return OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Client not connected".to_string()),
+            };
+        };
+        
+        // If failed with connection error, reconnect and retry once
+        if !result.success {
+            if let Some(ref error) = result.error {
+                if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
+                    tracing::warn!(device_id = %self.device.id, error = %error, "Operation failed, attempting reconnect and retry");
+                    
+                    // Drop stale connection and reconnect
+                    self.client = None;
+                    self.update_connection_state(ConnectionState::Disconnected, context);
+                    
+                    if self.ensure_connected(context) {
+                        // Retry the operation
+                        if let Some(client) = &mut self.client {
+                            tracing::info!(device_id = %self.device.id, "Retrying operation after reconnect");
+                            let retry_result = client.execute_operation(modbus_op);
+                            if retry_result.success {
+                                tracing::info!(device_id = %self.device.id, "Retry successful");
+                            } else {
+                                tracing::warn!(device_id = %self.device.id, "Retry failed");
+                            }
+                            return retry_result;
+                        }
+                    }
+                }
+            }
+        }
+        
+        result
     }
 
     /// Convert Operation and params to ModbusOp
@@ -422,29 +445,14 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .map(|g| (g.fields.clone(), self.device.byte_order.clone()));
 
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = if let Some(client) = &mut self.client {
-                                client.execute_operation(&modbus_op)
-                            } else {
-                                OperationResult {
-                                    success: false,
-                                    data: JsonValue::Null,
-                                    error: Some("Client not connected".to_string()),
-                                }
-                            };
+                            let result = self.execute_with_retry(context, &modbus_op);
                             
-                            // If read failed with IO error, reset connection to force reconnect
-                            if !result.success {
-                                if let Some(ref error) = result.error {
-                                    if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
-                                        tracing::warn!(device_id = %self.device.id, error = %error, "Modbus read failed, resetting connection");
-                                        self.client = None;
-                                        self.update_connection_state(ConnectionState::Disconnected, context);
-                                    }
+                            if result.success {
+                                if let Some(latency) =
+                                    result.data.get("latency_us").and_then(|v| v.as_u64())
+                                {
+                                    self.record_communication(context, latency);
                                 }
-                            } else if let Some(latency) =
-                                result.data.get("latency_us").and_then(|v| v.as_u64())
-                            {
-                                self.record_communication(context, latency);
                             }
 
                             // Parse fields from the register values
@@ -505,29 +513,14 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = if let Some(client) = &mut self.client {
-                                client.execute_operation(&modbus_op)
-                            } else {
-                                OperationResult {
-                                    success: false,
-                                    data: JsonValue::Null,
-                                    error: Some("Client not connected".to_string()),
-                                }
-                            };
+                            let result = self.execute_with_retry(context, &modbus_op);
                             
-                            // If read failed with IO error, reset connection to force reconnect
-                            if !result.success {
-                                if let Some(ref error) = result.error {
-                                    if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
-                                        tracing::warn!(device_id = %self.device.id, error = %error, "Modbus read failed, resetting connection");
-                                        self.client = None;
-                                        self.update_connection_state(ConnectionState::Disconnected, context);
-                                    }
+                            if result.success {
+                                if let Some(latency) =
+                                    result.data.get("latency_us").and_then(|v| v.as_u64())
+                                {
+                                    self.record_communication(context, latency);
                                 }
-                            } else if let Some(latency) =
-                                result.data.get("latency_us").and_then(|v| v.as_u64())
-                            {
-                                self.record_communication(context, latency);
                             }
                             send_response(
                                 result.success,
