@@ -1,6 +1,6 @@
 //! Modbus client for connection management and operations
 
-use binrw::{helpers::until_eof, BinRead};
+
 use roboplc::comm::tcp;
 use roboplc::comm::Client;
 use roboplc::io::modbus::prelude::*;
@@ -9,19 +9,54 @@ use serde_json::Value as JsonValue;
 use std::time::{Duration, SystemTime};
 
 // ==================== Helper types for batch reading ====================
+use binrw::BinRead;
+use std::io::{Read, Seek};
 
-/// Helper struct to read multiple u8 values until EOF
-#[derive(BinRead)]
+/// Raw coil data (bytes from parse_bool_u8)
+#[derive(Debug)]
 struct CoilData {
-    #[br(parse_with = until_eof)]
     values: Vec<u8>,
 }
 
-/// Helper struct to read multiple u16 values until EOF
-#[derive(BinRead)]
+impl BinRead for CoilData {
+    type Args<'a> = ();
+    
+    fn read_options<R: Read + Seek>(
+        reader: &mut R,
+        _endian: binrw::Endian,
+        _args: Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        let mut values = Vec::new();
+        let mut buf = [0u8; 1];
+        while let Ok(()) = reader.read_exact(&mut buf) {
+            values.push(buf[0]);
+        }
+        Ok(CoilData { values })
+    }
+}
+
+/// Raw register data (u16 values from parse_slice)
+#[derive(Debug)]
 struct RegisterData {
-    #[br(parse_with = until_eof)]
     values: Vec<u16>,
+}
+
+impl BinRead for RegisterData {
+    type Args<'a> = ();
+    
+    fn read_options<R: Read + Seek>(
+        reader: &mut R,
+        _endian: binrw::Endian,
+        _args: Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        let mut values = Vec::new();
+        let mut buf = [0u8; 2];
+        // Read u16 values in big-endian (Modbus standard)
+        while reader.read_exact(&mut buf).is_ok() {
+            values.push(u16::from_be_bytes(buf));
+        }
+        Ok(RegisterData { values })
+    }
 }
 
 // ==================== WriteValue ====================

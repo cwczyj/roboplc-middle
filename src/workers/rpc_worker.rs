@@ -92,6 +92,7 @@ enum RpcResultType {
         devices: Vec<String>,
     },
     Data {
+        success: bool,
         data: serde_json::Value,
     },
     Status {
@@ -239,7 +240,7 @@ impl RpcHandler {
         match response_rx.blocking_recv() {
             Ok((success, data, error)) => {
                 if success {
-                    Ok(RpcResultType::Data { data })
+                    Ok(RpcResultType::Data { success: true, data })
                 } else {
                     Ok(RpcResultType::Error {
                         error: error.unwrap_or_else(|| "Unknown error".to_string()),
@@ -381,6 +382,7 @@ async fn run_async_server(
                 match accept_result {
                     Ok((stream, addr)) => {
                         let handler = handler.clone();
+                        tracing::info!(stream = ?stream, addr = %addr, "Accepted new RPC connection");
                         // Spawn connection handler
                         tokio::spawn(async move {
                             if let Err(e) = handle_connection(stream, addr, handler).await {
@@ -448,11 +450,17 @@ async fn handle_connection(
     }
 
     // Create RpcServer for this connection (fresh each time to avoid generic complexity)
-    let server = RpcServer::new((*handler).clone());
+    // Use spawn_blocking because RpcServer::handle_request_payload calls blocking_send/blocking_recv
+    let handler = (*handler).clone();
+    let response_payload = tokio::task::spawn_blocking(move || {
+        let server = RpcServer::new(handler);
+        server.handle_request_payload::<Json>(&request_payload, addr)
+    })
+    .await
+    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
-    // Process request
-    if let Some(response_payload) = server.handle_request_payload::<Json>(&request_payload, addr) {
-        // Write response with timeout
+    // Write response with timeout if there is one
+    if let Some(response_payload) = response_payload {
         timeout(Duration::from_secs(5), stream.write_all(&response_payload)).await??;
     }
 

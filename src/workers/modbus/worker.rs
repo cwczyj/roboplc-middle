@@ -129,6 +129,7 @@ impl ModbusWorker {
     fn ensure_connected(&mut self, context: &Context<Message, Variables>) -> bool {
         let timeout = self.timeout_handler.timeout();
 
+
         if self.client.is_none() {
             self.update_connection_state(ConnectionState::Connecting, context);
             if let Err(e) = self.connect(timeout) {
@@ -329,7 +330,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                 operation,
                 params,
                 correlation_id,
-                respond_to: _,
+                respond_to,
             } = msg
             {
                 // Verify this message is for our device
@@ -351,16 +352,43 @@ impl Worker<Message, Variables> for ModbusWorker {
 
                 // Ensure we're connected before processing
                 if !self.ensure_connected(context) {
-                    // Send error response
-                    context.hub().send(Message::DeviceResponse {
-                        device_id: self.device.id.clone(),
-                        success: false,
-                        data: JsonValue::Null,
-                        error: Some("Device not connected".to_string()),
-                        correlation_id,
-                    });
+                    // Send error response directly to requester if respond_to is available
+                    if let Some(sender) = respond_to {
+                        let _ = sender.send((
+                            false,
+                            JsonValue::Null,
+                            Some("Device not connected".to_string()),
+                        ));
+                    } else {
+                        // Fallback to Hub response for backward compatibility
+                        context.hub().send(Message::DeviceResponse {
+                            device_id: self.device.id.clone(),
+                            success: false,
+                            data: JsonValue::Null,
+                            error: Some("Device not connected".to_string()),
+                            correlation_id,
+                        });
+                    }
                     continue;
                 }
+
+                // Helper closure to send response directly or via Hub
+                // Note: We use device_id.clone() here to avoid borrowing self
+                let device_id_for_response = self.device.id.clone();
+                let send_response = |success: bool, data: JsonValue, error: Option<String>| {
+                    if let Some(ref sender) = respond_to {
+                        let _ = sender.send((success, data, error));
+                    } else {
+                        // Fallback to Hub response for backward compatibility
+                        context.hub().send(Message::DeviceResponse {
+                            device_id: device_id_for_response.clone(),
+                            success,
+                            data,
+                            error,
+                            correlation_id,
+                        });
+                    }
+                };
 
                 // Handle operations
                 match operation {
@@ -370,19 +398,14 @@ impl Worker<Message, Variables> for ModbusWorker {
                             "device_id": self.device.id,
                             "connected": self.connection_state == ConnectionState::Connected,
                             "connection_state": format!("{:?}", self.connection_state),
-                            "last_communication": self.last_communication.map(|t| {
-                                t.duration_since(UNIX_EPOCH)
+                            "last_communication_ms": self.last_communication.map(|t| {
+                                SystemTime::now()
+                                    .duration_since(t)
                                     .unwrap_or_default()
                                     .as_millis() as u64
                             }),
                         });
-                        context.hub().send(Message::DeviceResponse {
-                            device_id: self.device.id.clone(),
-                            success: true,
-                            data: status,
-                            error: None,
-                            correlation_id,
-                        });
+                        send_response(true, status, None);
                     }
                     Operation::ReadSignalGroup => {
                         let group_name = params
@@ -408,8 +431,17 @@ impl Worker<Message, Variables> for ModbusWorker {
                                     error: Some("Client not connected".to_string()),
                                 }
                             };
-                            // Record latency if available
-                            if let Some(latency) =
+                            
+                            // If read failed with IO error, reset connection to force reconnect
+                            if !result.success {
+                                if let Some(ref error) = result.error {
+                                    if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
+                                        tracing::warn!(device_id = %self.device.id, error = %error, "Modbus read failed, resetting connection");
+                                        self.client = None;
+                                        self.update_connection_state(ConnectionState::Disconnected, context);
+                                    }
+                                }
+                            } else if let Some(latency) =
                                 result.data.get("latency_us").and_then(|v| v.as_u64())
                             {
                                 self.record_communication(context, latency);
@@ -458,21 +490,13 @@ impl Worker<Message, Variables> for ModbusWorker {
                                 })
                             };
 
-                            context.hub().send(Message::DeviceResponse {
-                                device_id: self.device.id.clone(),
-                                success: result.success,
-                                data: response_data,
-                                error: result.error,
-                                correlation_id,
-                            });
+                            send_response(result.success, response_data, result.error);
                         } else {
-                            context.hub().send(Message::DeviceResponse {
-                                device_id: self.device.id.clone(),
-                                success: false,
-                                data: JsonValue::Null,
-                                error: Some(format!("Invalid signal group: {}", group_name)),
-                                correlation_id,
-                            });
+                            send_response(
+                                false,
+                                JsonValue::Null,
+                                Some(format!("Invalid signal group: {}", group_name)),
+                            );
                         }
                     }
                     Operation::WriteSignalGroup => {
@@ -490,30 +514,35 @@ impl Worker<Message, Variables> for ModbusWorker {
                                     error: Some("Client not connected".to_string()),
                                 }
                             };
-                            // Record latency if available
-                            if let Some(latency) =
+                            
+                            // If read failed with IO error, reset connection to force reconnect
+                            if !result.success {
+                                if let Some(ref error) = result.error {
+                                    if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
+                                        tracing::warn!(device_id = %self.device.id, error = %error, "Modbus read failed, resetting connection");
+                                        self.client = None;
+                                        self.update_connection_state(ConnectionState::Disconnected, context);
+                                    }
+                                }
+                            } else if let Some(latency) =
                                 result.data.get("latency_us").and_then(|v| v.as_u64())
                             {
                                 self.record_communication(context, latency);
                             }
-                            context.hub().send(Message::DeviceResponse {
-                                device_id: self.device.id.clone(),
-                                success: result.success,
-                                data: serde_json::json!({
+                            send_response(
+                                result.success,
+                                serde_json::json!({
                                     "group_name": group_name,
                                     "result": result.data
                                 }),
-                                error: result.error,
-                                correlation_id,
-                            });
+                                result.error,
+                            );
                         } else {
-                            context.hub().send(Message::DeviceResponse {
-                                device_id: self.device.id.clone(),
-                                success: false,
-                                data: JsonValue::Null,
-                                error: Some(format!("Invalid signal group: {}", group_name)),
-                                correlation_id,
-                            });
+                            send_response(
+                                false,
+                                JsonValue::Null,
+                                Some(format!("Invalid signal group: {}", group_name)),
+                            );
                         }
                     }
                 }

@@ -5,10 +5,14 @@ edition = "2021"
 authors = ["Middleware Team"]
 description = "Communication middleware converting JSON-RPC to Modbus TCP for PLCs and robot arms"
 license = "Apache-2.0"
+default-run = "roboplc-middleware"
 
 [dependencies]
 roboplc = { version = "0.6", default-features = false, features = ["modbus", "locking-rt-safe"] }
 binrw = "0.14"
+
+# For jsonrpc_client demo
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "blocking"], default-features = false }
 
 roboplc-rpc = { version = "0.1", features = ["std"] }
 rtsc = "0.4"
@@ -27,9 +31,23 @@ chrono = { version = "0.4", features = ["serde"] }
 actix-web = "4.4"
 actix-rt = "2.9"
 
+# Main binary
+[[bin]]
+name = "roboplc-middleware"
+path = "src/main.rs"
+
+# Demo binaries
+[[bin]]
+name = "mock_server"
+path = "demo/mock_server.rs"
+
+[[bin]]
+name = "jsonrpc_client"
+path = "demo/jsonrpc_client.rs"
+
 [dev-dependencies]
 tempfile = "3"
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "blocking"], default-features = false }
 portpicker = "0.1"
 
 

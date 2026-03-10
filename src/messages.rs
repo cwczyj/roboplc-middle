@@ -242,5 +242,4 @@ mod tests {
         let cloned = msg.clone();
         assert!(matches!(cloned, Message::DeviceControl { .. }));
     }
-
 }

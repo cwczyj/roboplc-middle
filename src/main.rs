@@ -40,7 +40,7 @@ use roboplc_middleware::{
 };
 use std::path::Path;
 use tracing_appender::rolling;
-use tracing_subscriber::fmt;
+use tracing_subscriber::{fmt, EnvFilter};
 
 /// 程序主入口
 ///
@@ -68,28 +68,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 配置日志系统
     // 根据配置文件中的 logging 配置设置日志输出
-    if config.logging.file.is_empty() {
-        // 如果没有配置日志文件，只输出到控制台
-        fmt().init();
-    } else {
-        // 配置文件日志输出
-        let log_path = Path::new(&config.logging.file);
-        let file_appender = if config.logging.daily_rotation {
-            // 按天轮转日志文件
-            rolling::daily(log_path.parent().unwrap(), log_path.file_name().unwrap())
+    let _log_guard: Option<tracing_appender::non_blocking::WorkerGuard> =
+        if config.logging.file.is_empty() {
+            // 如果没有配置日志文件，只输出到控制台
+            let filter = EnvFilter::new(&config.logging.level);
+            fmt().with_env_filter(filter).init();
+            None
         } else {
-            // 不轮转，固定日志文件
-            rolling::never(log_path.parent().unwrap(), log_path.file_name().unwrap())
+            // 配置文件日志输出
+            let log_path = Path::new(&config.logging.file);
+            let file_appender = if config.logging.daily_rotation {
+                // 按天轮转日志文件
+                rolling::daily(log_path.parent().unwrap(), log_path.file_name().unwrap())
+            } else {
+                // 不轮转，固定日志文件
+                rolling::never(log_path.parent().unwrap(), log_path.file_name().unwrap())
+            };
+            // 使用非阻塞的文件追加器，避免阻塞主线程
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+            // 初始化日志订阅器，同时输出到文件和控制台
+            let filter = EnvFilter::new(&config.logging.level);
+            fmt()
+                .with_writer(non_blocking)
+                .with_env_filter(filter)
+                .init();
+            eprintln!("Logging to file: {}", config.logging.file);
+            Some(guard) // 保持 guard 存活到 main 结束
         };
-
-        // 使用非阻塞的文件追加器，避免阻塞主线程
-        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-
-        // 初始化日志订阅器，同时输出到文件
-        fmt().with_writer(non_blocking).finish();
-
-        eprintln!("Logging to file: {}", config.logging.file);
-    }
 
     eprintln!("Log level: {}", config.logging.level);
 
