@@ -157,7 +157,7 @@ impl ModbusWorker {
     /// 
     /// Uses roboplc Client's session_id to detect TCP reconnects without sending
     /// any network traffic. Much more efficient than ping-based detection.
-    fn execute_with_retry(
+    fn execute_operation_with_session_check(
         &mut self, 
         context: &Context<Message, Variables>,
         modbus_op: &ModbusOp
@@ -194,37 +194,18 @@ impl ModbusWorker {
         }
         
         // Execute operation
-        let result = if let Some(client) = &mut self.client {
+        // Note: We rely on session_id detection above to catch connection changes.
+        // If a race condition occurs (connection drops between check and execute),
+        // the operation will fail and the next request will detect it via session_id.
+        if let Some(client) = &mut self.client {
             client.execute_operation(modbus_op)
         } else {
-            return OperationResult {
+            OperationResult {
                 success: false,
                 data: JsonValue::Null,
                 error: Some("Client not connected".to_string()),
-            };
-        };
-        
-        // If operation failed with connection error, retry once
-        // This handles race conditions where connection drops during operation
-        if !result.success {
-            if let Some(ref error) = result.error {
-                if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
-                    tracing::warn!(device_id = %self.device.id, error = %error, "Operation failed, connection may be stale, retrying");
-                    
-                    // Drop and recreate connection
-                    self.client = None;
-                    self.update_connection_state(ConnectionState::Disconnected, context);
-                    
-                    if self.ensure_connected(context) {
-                        if let Some(client) = &mut self.client {
-                            return client.execute_operation(modbus_op);
-                        }
-                    }
-                }
             }
         }
-        
-        result
     }
 
     /// Convert Operation and params to ModbusOp
@@ -472,7 +453,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .map(|g| (g.fields.clone(), self.device.byte_order.clone()));
 
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = self.execute_with_retry(context, &modbus_op);
+                            let result = self.execute_operation_with_session_check(context, &modbus_op);
                             
                             if result.success {
                                 if let Some(latency) =
@@ -540,7 +521,7 @@ impl Worker<Message, Variables> for ModbusWorker {
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
                         if let Some(modbus_op) = self.operation_to_modbus_op(&operation, &params) {
-                            let result = self.execute_with_retry(context, &modbus_op);
+                            let result = self.execute_operation_with_session_check(context, &modbus_op);
                             
                             if result.success {
                                 if let Some(latency) =
