@@ -13,20 +13,20 @@ use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-/// roboplc-rpc 请求结构 (使用 "m" 表示 method, "p" 表示 params, "i" 表示 id)
+/// roboplc-rpc 请求结构 (使用标准 JSON-RPC 2.0 格式：method, params, id)
 /// 这是 roboplc_rpc crate 的自定义格式
 #[derive(serde::Serialize)]
 struct RoboRpcRequest<'a> {
     jsonrpc: &'a str,
-    #[serde(rename = "m")]
+    #[serde(rename = "method")]
     method: &'a str,
-    #[serde(rename = "p")]
+    #[serde(rename = "params")]
     params: serde_json::Value,
-    #[serde(rename = "i")]
+    #[serde(rename = "id")]
     id: u64,
 }
 
-/// roboplc-rpc 响应结构 (使用 "i" 表示 id, "r" 表示 result, "e" 表示 error)
+/// roboplc-rpc 响应结构 (使用标准 JSON-RPC 2.0 格式：id, result, error)
 /// 这是 roboplc_rpc crate 的自定义格式
 #[derive(serde::Deserialize, Debug)]
 struct JsonRpcResponse {
@@ -34,9 +34,9 @@ struct JsonRpcResponse {
     jsonrpc: String,
     #[serde(default, rename = "i")]
     id: u64,
-    #[serde(default, rename = "r")]
+    #[serde(default, rename = "result")]
     result: Option<serde_json::Value>,
-    #[serde(default, rename = "e")]
+    #[serde(default, rename = "error")]
     error: Option<JsonRpcError>,
 }
 
@@ -110,19 +110,19 @@ fn print_help() {
     println!("  interactive                  交互模式");
     println!();
     println!("示例:");
-    println!("  # 读取电机控制信号组");
+    println!("  读取电机控制信号组");
     println!("  cargo run --bin jsonrpc_client -- read motor_control");
     println!();
-    println!("  # 读取温度传感器信号组");
+    println!("  读取温度传感器信号组");
     println!("  cargo run --bin jsonrpc_client -- read temperature_sensor");
     println!();
-    println!("  # 写入电机速度");
+    println!("  写入电机速度");
     println!("  cargo run --bin jsonrpc_client -- write motor_control motor_speed 2000");
     println!();
-    println!("  # 列出所有设备");
+    println!("  列出所有设备");
     println!("  cargo run --bin jsonrpc_client -- list");
     println!();
-    println!("  # 获取系统状态");
+    println!("  获取系统状态");
     println!("  cargo run --bin jsonrpc_client -- status");
 }
 

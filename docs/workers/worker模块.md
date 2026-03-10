@@ -68,7 +68,7 @@
 
 **请求格式：**
 ```json
-{"m": "read_signal_group", "p": {"device_id": "plc-1", "group_name": "sensors"}}
+{"method":"read_signal_group", "params":{"device_id": "plc-1", "group_name": "sensors"}}
 ```
 
 **关键结构：**

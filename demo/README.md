@@ -171,46 +171,46 @@ cargo run --bin jsonrpc_client -- write <signal_group> <field> <value>
 
 ```bash
 # Ping 测试
-echo '{"jsonrpc":"2.0","m":"ping","p":{},"i":1}' | nc 127.0.0.1 8080
+echo '{"jsonrpc":"2.0","method":"ping","params":{},"id":1}' | nc 127.0.0.1 8080
 
 # 获取版本
-echo '{"jsonrpc":"2.0","m":"get_version","p":{},"i":2}' | nc 127.0.0.1 8080
+echo '{"jsonrpc":"2.0","method":"get_version","params":{},"id":2}' | nc 127.0.0.1 8080
 
 # 读取信号组
-echo '{"jsonrpc":"2.0","m":"read_signal_group","p":{"device_id":"mock-device","group_name":"motor_control"},"i":3}' | nc 127.0.0.1 8080
+echo '{"jsonrpc":"2.0","method":"read_signal_group","params":{"device_id":"mock-device","group_name":"motor_control"},"id":3}' | nc 127.0.0.1 8080
 ```
 
 ### JSON-RPC 请求格式
 
-**注意**: roboplc-rpc 使用自定义的 JSON 格式：
-- `m` 代替 `method`
-- `p` 代替 `params`
-- `i` 代替 `id`
-- `r` 代替 `result`
-- `e` 代替 `error`
+**注意**: roboplc-rpc 使用标准 JSON-RPC 2.0 格式：
+- `method` - 方法名
+- `params` - 参数
+- `id` - 请求标识
+- `result` - 响应结果
+- `error` - 错误信息
 
 中间件支持以下 JSON-RPC 方法：
 
 #### 1. ping - 连接测试
 
 ```json
-{"jsonrpc":"2.0","m":"ping","p":{},"i":1}
+{"jsonrpc":"2.0","method":"ping","params":{},"id":1}
 ```
 
 响应:
 ```json
-{"i":1,"r":{"success":true}}
+{"id":1,"result":{"success":true}}
 ```
 
 #### 2. get_version - 获取版本
 
 ```json
-{"jsonrpc":"2.0","m":"get_version","p":{},"i":2}
+{"jsonrpc":"2.0","method":"get_version","params":{},"id":2}
 ```
 
 响应:
 ```json
-{"i":2,"r":{"version":"0.1.0"}}
+{"id":2,"result":{"version":"0.1.0"}}
 ```
 
 #### 3. read_signal_group - 读取信号组
@@ -223,7 +223,7 @@ echo '{"jsonrpc":"2.0","m":"read_signal_group","p":{"device_id":"mock-device","g
     "device_id": "mock-device",
     "group_name": "motor_control"
   },
-  "i": 3
+  "id": 3
 }
 ```
 
@@ -242,7 +242,7 @@ echo '{"jsonrpc":"2.0","m":"read_signal_group","p":{"device_id":"mock-device","g
       "motor_speed": 2000
     }
   },
-  "i": 4
+  "id": 4
 }
 ```
 
@@ -255,7 +255,7 @@ echo '{"jsonrpc":"2.0","m":"read_signal_group","p":{"device_id":"mock-device","g
   "p": {
     "device_id": "mock-device"
   },
-  "i": 5
+  "id": 5
 }
 ```
 
@@ -314,7 +314,7 @@ Mock Server 会在控制台显示：
 **解决**: 
 - 设备控制（读/写寄存器）→ 使用 `nc` 访问 8080:
   ```bash
-  echo '{"jsonrpc":"2.0","m":"readsignalgroup","p":{"device_id":"mock-device","group_name":"motor_control"},"i":1}' | nc 127.0.0.1 8080
+  echo '{"jsonrpc":"2.0","method":"readsignalgroup","params":{"device_id":"mock-device","group_name":"motor_control"},"id":1}' | nc 127.0.0.1 8080
   ```
 - 管理查询（设备列表、状态）→ 使用 `curl` 访问 8081:
   ```bash
