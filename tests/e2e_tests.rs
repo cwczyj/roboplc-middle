@@ -46,7 +46,7 @@ fn verify_workers_can_be_created(
 ) {
     use roboplc_middleware::workers::{
         config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
-        manager::DeviceManager, modbus::ModbusWorker, rpc_worker::RpcWorker,
+        manager::DeviceManager, modbus::ModbusWorker, rpc::worker::RpcWorker,
     };
 
     let _rpc_worker = RpcWorker::new(config.clone());
@@ -188,7 +188,7 @@ fn test_worker_types_instantiate_correctly() {
     use roboplc_middleware::config::Config;
     use roboplc_middleware::workers::{
         config_loader::ConfigLoader, http_worker::HttpWorker, latency_monitor::LatencyMonitor,
-        manager::DeviceManager, modbus::ModbusWorker, rpc_worker::RpcWorker,
+        manager::DeviceManager, modbus::ModbusWorker, rpc::worker::RpcWorker,
     };
 
     let config_file = create_test_config(8882, 8883, 5021);
@@ -277,7 +277,7 @@ offset = 0
 /// a request that will be sent to the Modbus worker.
 #[test]
 fn test_rpc_creates_device_control_message() {
-    use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
+    use roboplc_middleware::workers::rpc::types::DeviceControlRequest;
     use std::sync::mpsc::channel;
     use tokio::sync::oneshot;
 
@@ -311,7 +311,7 @@ fn test_rpc_creates_device_control_message() {
 /// Test: Verify DeviceControl message for SetRegister operation
 #[test]
 fn test_device_control_set_register_message() {
-    use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
+    use roboplc_middleware::workers::rpc::types::DeviceControlRequest;
     use std::sync::mpsc::channel;
     use tokio::sync::oneshot;
 
@@ -343,7 +343,7 @@ fn test_device_control_set_register_message() {
 /// Test: Verify DeviceControl message for ReadBatch operation
 #[test]
 fn test_device_control_read_batch_message() {
-    use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
+    use roboplc_middleware::workers::rpc::types::DeviceControlRequest;
     use std::sync::mpsc::channel;
     use tokio::sync::oneshot;
 
@@ -374,7 +374,7 @@ fn test_device_control_read_batch_message() {
 /// Test: Verify DeviceControl message for WriteBatch operation
 #[test]
 fn test_device_control_write_batch_message() {
-    use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
+    use roboplc_middleware::workers::rpc::types::DeviceControlRequest;
     use std::sync::mpsc::channel;
     use tokio::sync::oneshot;
 
@@ -405,7 +405,7 @@ fn test_device_control_write_batch_message() {
 /// Test: Response sender channel correctly receives response
 #[test]
 fn test_response_sender_receives_response() {
-    use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
+    use roboplc_middleware::workers::rpc::types::DeviceControlRequest;
     use std::sync::mpsc::channel;
     use tokio::sync::oneshot;
 
@@ -445,7 +445,7 @@ fn test_response_sender_receives_response() {
 /// Test: Verify correlation_id is unique for each request
 #[test]
 fn test_correlation_id_uniqueness() {
-    use roboplc_middleware::workers::rpc_worker::DeviceControlRequest;
+    use roboplc_middleware::workers::rpc::types::DeviceControlRequest;
     use std::sync::mpsc::channel;
     use tokio::sync::oneshot;
 

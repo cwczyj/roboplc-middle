@@ -92,7 +92,7 @@ mod integration_tests {
 
         // Simulate DeviceControlRequest
         let (response_tx, _response_rx) = oneshot::channel();
-        let request = roboplc_middleware::workers::rpc_worker::DeviceControlRequest {
+        let request = roboplc_middleware::workers::rpc::types::DeviceControlRequest {
             device_id: "test-device".to_string(),
             operation: Operation::GetStatus,
             params: serde_json::json!({}),
@@ -157,7 +157,7 @@ mod integration_tests {
             let counter_clone = counter.clone();
             let handle = tokio::spawn(async move {
                 let (response_tx, _) = oneshot::channel();
-                let request = roboplc_middleware::workers::rpc_worker::DeviceControlRequest {
+                let request = roboplc_middleware::workers::rpc::types::DeviceControlRequest {
                     device_id: format!("device-{}", i),
                     operation: Operation::GetStatus,
                     params: serde_json::json!({}),
@@ -255,7 +255,7 @@ mod performance_tests {
         let sender = tokio::spawn(async move {
             for i in 0..message_count {
                 let (response_tx, _) = oneshot::channel();
-                let request = roboplc_middleware::workers::rpc_worker::DeviceControlRequest {
+                let request = roboplc_middleware::workers::rpc::types::DeviceControlRequest {
                     device_id: format!("device-{}", i),
                     operation: Operation::GetStatus,
                     params: serde_json::json!({}),
@@ -325,7 +325,7 @@ mod performance_tests {
             let tx_clone = tx.clone();
             let handle = tokio::spawn(async move {
                 let (response_tx, _) = oneshot::channel();
-                let request = roboplc_middleware::workers::rpc_worker::DeviceControlRequest {
+                let request = roboplc_middleware::workers::rpc::types::DeviceControlRequest {
                     device_id: format!("device-{}", i),
                     operation: Operation::GetStatus,
                     params: serde_json::json!({}),
@@ -373,7 +373,7 @@ mod performance_tests {
             let tx_clone = tx.clone();
             let handle = tokio::spawn(async move {
                 let (response_tx, _) = oneshot::channel();
-                let request = roboplc_middleware::workers::rpc_worker::DeviceControlRequest {
+                let request = roboplc_middleware::workers::rpc::types::DeviceControlRequest {
                     device_id: format!("device-{}", i % 10), // 10 different devices
                     operation: Operation::GetStatus,
                     params: serde_json::json!({}),

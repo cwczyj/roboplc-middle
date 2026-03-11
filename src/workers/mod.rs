@@ -69,8 +69,17 @@
 ///
 /// 职责：监听指定端口（默认 8080），接收 JSON-RPC 请求
 /// 消息流：接收外部请求 → 转换为 DeviceControl 消息 → 发送到 Manager
-/// 对应文件：`rpc_worker.rs`
-pub mod rpc_worker;
+/// 对应文件：`rpc/` 模块文件夹
+///
+/// 模块结构:
+/// - worker.rs: RpcWorker 主 worker 实现
+/// - handler.rs: RpcHandler 和 RpcServerHandler trait 实现
+/// - server.rs: 异步服务器主循环
+/// - connection.rs: TCP 连接处理
+/// - request.rs: 设备控制请求处理和响应路由
+/// - cleanup.rs: 超时请求清理逻辑
+/// - types.rs: 类型定义
+pub mod rpc;
 
 /// HTTP API Worker
 ///
