@@ -68,7 +68,7 @@ Imports follow this order:
 2. External dependencies
 3. Standard library (std::)
 
-**Example from `src/workers/modbus_worker.rs`:**
+**Example from `src/workers/modbus/worker.rs`:**
 ```rust
 use crate::config::Device;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
@@ -213,7 +213,7 @@ impl Worker<Message, Variables> for MyWorker {
 - Arrange-Act-Assert pattern preferred
 - Use helper functions for test fixtures
 
-**Example from `src/workers/modbus_worker.rs`:**
+**Example from `src/workers/modbus/worker.rs`:**
 ```rust
 #[cfg(test)]
 mod tests {
@@ -256,25 +256,29 @@ struct Backoff {
 ```
 
 ## Project Structure
-
 ```
 src/
-├── lib.rs           # Main library exports, shared state (Variables)
-├── main.rs          # Entry point
-├── config.rs        # Configuration parsing and validation
-├── messages.rs      # Message enums for worker communication
-├── api.rs          # HTTP API endpoints
-├── workers/         # Worker implementations
+├── lib.rs              # Main library exports, shared state (Variables)
+├── main.rs             # Entry point
+├── config.rs           # Configuration parsing and validation
+├── messages.rs         # Message enums for worker communication
+├── data_conversion.rs  # Data type conversion utilities
+├── workers/            # Worker implementations
 │   ├── mod.rs
-│   ├── manager.rs
-│   ├── rpc_worker.rs
-│   ├── modbus_worker.rs
-│   ├── http_worker.rs
-│   ├── config_loader.rs
-│   └── latency_monitor.rs
-└── profiles/        # Device profiles
-    ├── mod.rs
-    └── device_profile.rs
+│   ├── manager.rs      # Device manager (message router)
+│   ├── rpc_worker.rs   # JSON-RPC 2.0 server
+│   ├── http_worker.rs  # HTTP API server
+│   ├── heartbeat_worker.rs   # Heartbeat detection
+│   ├── latency_monitor.rs    # Latency anomaly detection
+│   ├── config_loader.rs      # Hot config reload
+│   ├── config_updater.rs     # Config update handler
+│   └── modbus/         # Modbus implementation
+│       ├── mod.rs
+│       ├── worker.rs   # ModbusWorker implementation
+│       ├── client.rs   # Modbus TCP client
+│       ├── operations.rs # Register operations
+│       ├── parsing.rs  # Signal group encoding/decoding
+│       └── types.rs    # Shared types (Backoff, ConnectionState, etc.)
 ```
 
 ## Key Dependencies
@@ -291,7 +295,7 @@ src/
 | Task | Location | See Also |
 |------|----------|----------|
 | Add a new worker | `src/workers/<name>.rs` | [workers/AGENTS.md](src/workers/AGENTS.md) |
-| Worker registration | `src/main.rs` lines 102-119 | [workers/AGENTS.md](src/workers/AGENTS.md) |
+| Worker registration | `src/main.rs` lines 108-130 | [workers/AGENTS.md](src/workers/AGENTS.md) |
 | Modbus protocol changes | `src/workers/modbus/` | [modbus/AGENTS.md](src/workers/modbus/AGENTS.md) |
 | Message routing logic | `src/workers/manager.rs` | [workers/AGENTS.md](src/workers/AGENTS.md) |
 | Add new test | `tests/<type>_tests.rs` | [tests/AGENTS.md](tests/AGENTS.md) |

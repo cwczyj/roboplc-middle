@@ -26,10 +26,11 @@ HttpWorker ──SystemStatus──▶ Manager ──查询 Variables ──▶ 
 |--------|------|------|---------|
 | **RpcWorker** | `rpc_worker.rs` | 8080 | JSON-RPC 2.0 server |
 | **HttpWorker** | `http_worker.rs` | 8081 | HTTP management API |
-| **DeviceManager** | `manager.rs` | - | Message router between workers |
+| **DeviceManager** | `manager.rs` | - | Device registration and timeout cleanup |
 | **ConfigLoader** | `config_loader.rs` | - | Hot config reload via file watching |
 | **ConfigUpdater** | `config_updater.rs` | - | Config update processing |
 | **LatencyMonitor** | `latency_monitor.rs` | - | 3-sigma latency anomaly detection |
+| **HeartbeatWorker** | `heartbeat_worker.rs` | - | Independent heartbeat detection with latency tracking |
 | **ModbusWorker** | `modbus/worker.rs` | - | Modbus TCP client (one per device) |
 
 ## Worker Pattern
@@ -65,8 +66,8 @@ impl Worker<Message, Variables> for MyWorker {
 | Task | Location | Notes |
 |------|----------|-------|
 | Add new worker | Create `src/workers/<name>.rs` | Follow existing pattern |
-| Worker registration | `src/main.rs` lines 102-119 | `controller.spawn_worker()` |
-| Message routing | `manager.rs` | Correlation ID mapping |
+| Worker registration | `src/main.rs` lines 108-130 | `controller.spawn_worker()` |
+| Message routing | `manager.rs` lines 70-115 | Device registration and timeout cleanup |
 | Shared state | `lib.rs` `Variables` struct | Arc<RwLock<>> for thread safety |
 | Message types | `messages.rs` | All Message enum variants |
 

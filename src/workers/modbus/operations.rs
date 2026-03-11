@@ -221,10 +221,6 @@ mod tests {
 
     #[test]
     fn register_type_to_modbus_register_kind() {
-        //! Modbus operation types and utilities
-        //!
-        //! This module provides the RegisterType enum and address parsing utilities
-        //! for Modbus operations.
 
         use roboplc::io::modbus::prelude::ModbusRegisterKind;
 

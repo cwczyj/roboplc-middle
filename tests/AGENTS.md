@@ -10,13 +10,13 @@ Test suite organized by test type. All tests use the `roboplc_middleware` crate.
 
 | File | Type | Lines | Purpose |
 |------|------|-------|---------|
-| `integration_tests.rs` | Integration | 262 | Worker integration, startup tests |
-| `e2e_tests.rs` | E2E | 650 | End-to-end scenarios with mock devices |
-| `async_rpc_tests.rs` | Async | 400 | Async RPC handler tests |
-| `functional_worker_tests.rs` | Functional | 70 | Worker lifecycle tests |
-| `functional_config_tests.rs` | Functional | 140 | Config loading/parsing tests |
-| `functional_http_tests.rs` | Functional | 120 | HTTP API endpoint tests |
-| `mock_modbus.rs` | Mock | 700 | Mock Modbus TCP server for tests |
+| `integration_tests.rs` | Integration | 267 | Worker integration, startup tests |
+| `e2e_tests.rs` | E2E | 699 | End-to-end scenarios with mock devices |
+| `async_rpc_tests.rs` | Async | 470 | Async RPC handler tests |
+| `functional_worker_tests.rs` | Functional | 79 | Worker lifecycle tests |
+| `functional_config_tests.rs` | Functional | 253 | Config loading/parsing tests |
+| `functional_http_tests.rs` | Functional | 135 | HTTP API endpoint tests |
+| `mock_modbus.rs` | Mock | 767 | Mock Modbus TCP server for tests |
 
 ## Test Conventions
 

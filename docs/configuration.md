@@ -31,17 +31,12 @@ max_concurrent_ops = 3
 heartbeat_interval_sec = 30
 
 # 信号组配置：定义一个信号组及其字段映射
-# [[devices.signal_groups]] 定义信号组的属性
-# [[devices.signal_groups.fields]] 定义该信号组内的字段（属于上一个 [[devices.signal_groups]]）
 [[devices.signal_groups]]
 name = "temperature_sensor"
 description = "温度传感器数据"
 register_address = "h100"
 register_count = 5
-# fields 字段在下面定义（可省略，但强烈建议配置）
 
-# 以下 [[devices.signal_groups.fields]] 定义属于上面的 temperature_sensor 信号组
-# fields 是 [[devices.signal_groups]] 的子配置项，定义该组内的具体字段
 [[devices.signal_groups.fields]]
 name = "temperature"
 data_type = "F32"
@@ -61,11 +56,6 @@ offset = 3
 name = "sensor_status"
 data_type = "Bool"
 offset = 4
-# 上面的 4 个 [[devices.signal_groups.fields]] 都属于 temperature_sensor 信号组
-
-# 下面的 [[devices.signal_groups]] 开始定义一个新的信号组
-# 注意：新的 [[devices.signal_groups]] 会重置 fields 的关联关系
-# 因此下面的 [[devices.signal_groups.fields]] 属于 status 信号组，而不是 temperature_sensor
 
 [[devices.signal_groups]]
 name = "status"
@@ -73,8 +63,6 @@ description = "设备状态"
 register_address = "h200"
 register_count = 5
 
-# 设备状态信号组的字段映射
-# offset 表示相对于 signal_group.register_address 的偏移量
 [[devices.signal_groups.fields]]
 name = "running"
 data_type = "Bool"
@@ -112,7 +100,7 @@ heartbeat_interval_sec = 10
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `level` | String | 是 | - | 日志级别: trace/debug/info/warn/error |
-| `file` | String | 是 | - | 日志文件路径 |
+| `file` | String | 是 | - | 日志文件路径（空字符串表示只输出到控制台） |
 | `daily_rotation` | bool | 是 | - | 是否按天轮转日志文件 |
 
 ### [[devices]] 设备配置
@@ -126,7 +114,7 @@ heartbeat_interval_sec = 10
 | `unit_id` | u8 | 是 | - | Modbus 单元 ID（从站 ID） |
 | `addressing_mode` | String | 否 | "zero_based" | 地址模式: zero_based / one_based |
 | `byte_order` | String | 否 | "big_endian" | 字节序: big_endian / little_endian / little_endian_byte_swap / mid_big |
-| `tcp_nodelay` | bool | 否 | true | 是否启用 TCP_NODELAY |
+| `tcp_nodelay` | bool | 否 | true | 是否启用 TCP_NODELAY（禁用 Nagle 算法） |
 | `max_concurrent_ops` | u8 | 否 | 3 | 最大并发操作数 |
 | `heartbeat_interval_sec` | u32 | 否 | 30 | 心跳检测间隔（秒） |
 
@@ -259,10 +247,12 @@ Modbus 地址使用前缀表示寄存器类型：
 ## 地址模式说明
 
 ### zero_based（零基地址）
+
 Modbus 协议实际地址与配置地址相同。
 - 配置 `h100` → Modbus 地址 100
 
 ### one_based（一基地址）
+
 配置地址需要减 1 才是实际 Modbus 地址。
 - 配置 `h100` → Modbus 地址 99
 
@@ -289,6 +279,7 @@ Modbus 协议实际地址与配置地址相同。
 1. **字段名称唯一**：同一信号组内字段名称不能重复
 2. **偏移量有效**：字段偏移量 + 数据类型所需寄存器数 ≤ register_count
 3. **地址格式正确**：register_address 必须使用有效的前缀和数字
+4. **地址范围**：地址必须在 0-65535 范围内
 
 ## 配置热重载
 
@@ -296,4 +287,15 @@ ConfigLoader Worker 会监控配置文件变化：
 - 修改 `config.toml` 后自动重新加载
 - 使用内容对比避免不必要的重载
 - 发送 `ConfigUpdate` 消息通知其他 Worker
-- 三菱 PLC: little_endian_byte_swap
+- 支持设备列表的动态添加/删除
+
+## 配置验证
+
+配置加载时会执行以下验证：
+
+1. **设备 ID 唯一性**：检查所有设备 ID 是否唯一
+2. **信号组地址格式**：验证 register_address 格式正确
+3. **信号组地址范围**：验证地址在有效范围内
+4. **字段偏移量**：验证所有字段不超出信号组范围
+
+如果验证失败，程序会报错并退出。

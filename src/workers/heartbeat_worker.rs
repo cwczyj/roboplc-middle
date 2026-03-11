@@ -33,7 +33,6 @@ pub struct HeartbeatWorker {
 impl HeartbeatWorker {
     /// 创建新的 HeartbeatWorker
     pub fn new(config: Config) -> Self {
-        // 计算全局心跳间隔（取所有设备的最小值）
         let heartbeat_interval_sec = config
             .devices
             .iter()
@@ -45,7 +44,7 @@ impl HeartbeatWorker {
             config,
             current_device_index: 0,
             heartbeat_interval_sec,
-            heartbeat_timeout_sec: 5, // 默认 5 秒超时
+            heartbeat_timeout_sec: 5,
         }
     }
 
@@ -56,10 +55,8 @@ impl HeartbeatWorker {
         let start = SystemTime::now();
         let correlation_id = Self::generate_correlation_id();
 
-        // 创建响应通道
         let (tx, rx) = mpsc::channel();
 
-        // 发送 GetStatus 请求
         context.hub().send(Message::DeviceControl {
             device_id: device_id.to_string(),
             operation: crate::messages::Operation::GetStatus,
@@ -68,7 +65,6 @@ impl HeartbeatWorker {
             respond_to: Some(tx),
         });
 
-        // 等待响应（带超时）
         let timeout = Duration::from_secs(self.heartbeat_timeout_sec as u64);
         match rx.recv_timeout(timeout) {
             Ok((success, _data, _error)) => {
@@ -109,7 +105,6 @@ impl HeartbeatWorker {
             status.connected = connected;
             status.last_communication = std::time::Instant::now();
 
-            // 如果状态发生变化，记录事件
             if was_connected != connected {
                 let event_type = if connected {
                     DeviceEventType::Connected
@@ -134,7 +129,6 @@ impl HeartbeatWorker {
                     ),
                 };
 
-                // 释放锁后再推送事件
                 drop(states);
                 context.variables().device_events.force_push(event);
             }
@@ -154,14 +148,12 @@ impl HeartbeatWorker {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        // 广播 DeviceHeartbeat 消息
         let _ = context.hub().send(Message::DeviceHeartbeat {
             device_id: device_id.to_string(),
             timestamp_ms,
             latency_us,
         });
 
-        // 记录 LatencySample
         if connected && latency_us > 0 {
             let sample = LatencySample {
                 device_id: device_id.to_string(),
@@ -192,11 +184,9 @@ impl Worker<Message, Variables> for HeartbeatWorker {
             return Ok(());
         }
 
-        // 计算每个设备的检查间隔
-        // 平均分配检查时间，避免同时发送大量请求
         let per_device_interval =
             Duration::from_secs(self.heartbeat_interval_sec as u64 / device_count as u64);
-        let min_interval = Duration::from_millis(100); // 最小间隔 100ms
+        let min_interval = Duration::from_millis(100);
         let check_interval = per_device_interval.max(min_interval);
 
         tracing::info!(
@@ -207,7 +197,6 @@ impl Worker<Message, Variables> for HeartbeatWorker {
         );
 
         while context.is_online() {
-            // 获取当前要检查的设备
             let device = &self.config.devices[self.current_device_index];
 
             tracing::debug!(
@@ -216,19 +205,14 @@ impl Worker<Message, Variables> for HeartbeatWorker {
                 "Checking device heartbeat"
             );
 
-            // 发送心跳请求
             let (connected, latency_us) = self.ping_device(&device.id, context);
 
-            // 更新设备状态
             self.update_device_status(&device.id, connected, context);
 
-            // 广播心跳消息
             self.broadcast_heartbeat(&device.id, connected, latency_us, context);
 
-            // 移动到下一个设备
             self.current_device_index = (self.current_device_index + 1) % device_count;
 
-            // 等待下一个检查周期
             std::thread::sleep(check_interval);
         }
 

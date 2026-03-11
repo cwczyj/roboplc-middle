@@ -31,6 +31,15 @@ cargo test
 
 # 运行特定测试
 cargo test test_worker_creation_logic
+
+# 运行集成测试
+cargo test --test integration_tests
+
+# 运行 E2E 测试
+cargo test --test e2e_tests
+
+# 运行异步 RPC 测试
+cargo test --test async_rpc_tests
 ```
 
 ## 部署方式
@@ -118,6 +127,26 @@ docker run -d \
 
 上位软件通过 JSON-RPC 2.0 协议与中间件通信。
 
+**JSON-RPC 请求格式：**
+
+```json
+{
+  "m": "method_name",
+  "p": { "param1": "value1", "param2": "value2" }
+}
+```
+
+**支持的 JSON-RPC 方法：**
+
+| 方法 | 参数 | 说明 |
+|------|------|------|
+| `ping` | `{}` | 健康检查 |
+| `get_version` | `{}` | 获取中间件版本 |
+| `get_device_list` | `{}` | 获取设备列表 |
+| `get_status` | `{"device_id": "plc-1"}` | 获取设备状态 |
+| `read_signal_group` | `{"device_id": "plc-1", "group_name": "sensors"}` | 读取信号组 |
+| `write_signal_group` | `{"device_id": "plc-1", "group_name": "actuators", "data": {...}}` | 写入信号组 |
+
 **Python 示例:**
 
 ```python
@@ -127,10 +156,8 @@ import json
 def call_rpc(method, params=None):
     url = "http://localhost:8080/jsonrpc"
     payload = {
-        "jsonrpc": "2.0",
-        "method": method,
-        "params": params or [],
-        "id": 1
+        "m": method,
+        "p": params or {}
     }
     response = requests.post(url, json=payload)
     return response.json()
@@ -139,12 +166,16 @@ def call_rpc(method, params=None):
 result = call_rpc("get_device_list")
 print(result)
 
-# 读取寄存器
-result = call_rpc("get_register", ["plc-1", "h100"])
+# 读取信号组
+result = call_rpc("read_signal_group", {"device_id": "plc-1", "group_name": "temperature_sensor"})
 print(result)
 
-# 写入寄存器
-result = call_rpc("set_register", ["plc-1", "h100", 42])
+# 写入信号组
+result = call_rpc("write_signal_group", {
+    "device_id": "plc-1",
+    "group_name": "actuators",
+    "data": {"valve_1": True, "valve_2": False}
+})
 print(result)
 ```
 
@@ -160,14 +191,12 @@ public class RpcClient
     private readonly HttpClient _client = new HttpClient();
     private readonly string _url = "http://localhost:8080/jsonrpc";
 
-    public async Task<T> CallAsync<T>(string method, params object[] args)
+    public async Task<T> CallAsync<T>(string method, object? parameters = null)
     {
         var payload = new
         {
-            jsonrpc = "2.0",
-            method = method,
-            @params = args,
-            id = 1
+            m = method,
+            p = parameters ?? new {}
         };
         
         var content = new StringContent(
@@ -294,14 +323,6 @@ curl http://localhost:8081/api/devices/plc-1/status
 tail -f /var/log/roboplc-middleware.log
 ```
 
-### Prometheus 集成（预留）
-
-中间件预留了指标导出接口，可通过以下方式集成:
-
-1. 添加 Prometheus exporter
-2. 配置指标采集端点
-3. 在 Prometheus 配置中添加 scrape target
-
 ## 性能调优
 
 ### 实时调度
@@ -361,6 +382,29 @@ kill -TERM <pid>
 ## 安全建议
 
 1. **网络隔离**: 将中间件部署在隔离网络中
-2. **防火墙**: 仅开放必要端口
+2. **防火墙**: 仅开放必要端口（默认 8080、8081）
 3. **访问控制**: 在反向代理层添加认证
 4. **日志审计**: 定期检查日志
+
+## 开发模式
+
+### 使用 Mock Modbus 服务器测试
+
+项目包含完整的 Mock Modbus 服务器，用于开发和测试：
+
+```bash
+# 运行 Mock Modbus 服务器
+cargo run --bin mock_server
+
+# 运行 JSON-RPC 客户端演示
+cargo run --bin jsonrpc_client
+
+# 运行寄存器 RPC 演示
+cargo run --bin register_rpc_demo
+```
+
+Mock Modbus 服务器支持：
+- 所有标准 Modbus 功能码
+- 可配置延迟和错误注入
+- 自动端口分配
+- 请求计数和验证

@@ -115,7 +115,7 @@ offset = 6
 
 ```bash
 # 运行示例程序（会自动启动 Mock Modbus 服务器）
-cargo run --example register_rpc_demo
+cargo run --bin register_rpc_demo
 ```
 
 这个示例会：
@@ -134,6 +134,9 @@ cargo test --test integration_tests
 
 # 运行 E2E 测试
 cargo test --test e2e_tests
+
+# 运行异步 RPC 测试
+cargo test --test async_rpc_tests
 ```
 
 **方式三: 创建自定义 Mock 服务器**
@@ -180,8 +183,7 @@ fn main() {
 
 编译并运行：
 ```bash
-rustc --edition 2021 start_mock_modbus.rs -L target/debug/deps --extern roboplc_middleware=target/debug/libroboplc_middleware.rlib
-./start_mock_modbus
+cargo run --bin mock_server
 ```
 
 ### 3. 启动中间件
@@ -268,21 +270,17 @@ curl http://localhost:8081/api/devices | jq
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "ping",
-    "params": [],
-    "id": 1
+    "m": "ping",
+    "p": {}
   }'
 ```
 
 响应:
 ```json
 {
-  "jsonrpc": "2.0",
   "result": {
     "success": true
-  },
-  "id": 1
+  }
 }
 ```
 
@@ -292,21 +290,17 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "get_device_list",
-    "params": [],
-    "id": 1
+    "m": "get_device_list",
+    "p": {}
   }'
 ```
 
 响应:
 ```json
 {
-  "jsonrpc": "2.0",
   "result": {
     "devices": ["mock-device"]
-  },
-  "id": 1
+  }
 }
 ```
 
@@ -316,23 +310,19 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "get_status",
-    "params": ["mock-device"],
-    "id": 1
+    "m": "get_status",
+    "p": {"device_id": "mock-device"}
   }'
 ```
 
 响应:
 ```json
 {
-  "jsonrpc": "2.0",
   "result": {
     "connected": true,
     "last_communication_ms": 1234,
     "error_count": 0
-  },
-  "id": 1
+  }
 }
 ```
 
@@ -344,17 +334,14 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "read_signal_group",
-    "params": ["mock-device", "motor_control"],
-    "id": 1
+    "m": "read_signal_group",
+    "p": {"device_id": "mock-device", "group_name": "motor_control"}
   }'
 ```
 
 响应:
 ```json
 {
-  "jsonrpc": "2.0",
   "result": {
     "data": {
       "motor_speed": 1500,
@@ -363,8 +350,7 @@ curl -X POST http://localhost:8080/jsonrpc \
       "error_code": 0,
       "fault_flag": false
     }
-  },
-  "id": 1
+  }
 }
 ```
 
@@ -374,17 +360,14 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "read_signal_group",
-    "params": ["mock-device", "temperature_sensor"],
-    "id": 2
+    "m": "read_signal_group",
+    "p": {"device_id": "mock-device", "group_name": "temperature_sensor"}
   }'
 ```
 
 响应:
 ```json
 {
-  "jsonrpc": "2.0",
   "result": {
     "data": {
       "temperature_1": 25.0,
@@ -393,8 +376,7 @@ curl -X POST http://localhost:8080/jsonrpc \
       "sensor_status": 1,
       "alarm_code": 0
     }
-  },
-  "id": 2
+  }
 }
 ```
 
@@ -406,31 +388,33 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "write_signal_group",
-    "params": [
-      "mock-device",
-      "motor_control",
-      {
+    "m": "write_signal_group",
+    "p": {
+      "device_id": "mock-device",
+      "group_name": "motor_control",
+      "data": {
         "motor_speed": 2000,
         "motor_status": 1,
         "motor_direction": true,
         "error_code": 0,
         "fault_flag": false
       }
-    ],
-    "id": 3
+    }
   }'
 ```
 
 响应:
 ```json
 {
-  "jsonrpc": "2.0",
   "result": {
-    "data": {}
-  },
-  "id": 3
+    "data": {
+      "group_name": "motor_control",
+      "result": {
+        "writes": 5,
+        "latency_us": 1500
+      }
+    }
+  }
 }
 ```
 
@@ -440,10 +424,8 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "read_signal_group",
-    "params": ["mock-device", "motor_control"],
-    "id": 4
+    "m": "read_signal_group",
+    "p": {"device_id": "mock-device", "group_name": "motor_control"}
   }'
 ```
 
@@ -493,10 +475,8 @@ class RpcClient:
         """调用 JSON-RPC 方法"""
         self.id_counter += 1
         payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or [],
-            "id": self.id_counter
+            "m": method,
+            "p": params or {}
         }
         
         response = requests.post(self.url, json=payload)
@@ -517,15 +497,17 @@ class RpcClient:
     
     def get_status(self, device_id):
         """获取设备状态"""
-        return self.call("get_status", [device_id])
+        return self.call("get_status", {"device_id": device_id})
     
     def read_signal_group(self, device_id, group_name):
         """读取信号组"""
-        return self.call("read_signal_group", [device_id, group_name])
+        return self.call("read_signal_group", 
+                        {"device_id": device_id, "group_name": group_name})
     
     def write_signal_group(self, device_id, group_name, data):
         """写入信号组"""
-        return self.call("write_signal_group", [device_id, group_name, data])
+        return self.call("write_signal_group",
+                        {"device_id": device_id, "group_name": group_name, "data": data})
 
 def main():
     # 创建客户端
@@ -608,16 +590,12 @@ public class RpcClient
         _url = url;
     }
 
-    public async Task<T> CallAsync<T>(string method, params object[] args)
+    public async Task<T> CallAsync<T>(string method, object? parameters = null)
     {
-        _idCounter++;
-        
         var payload = new
         {
-            jsonrpc = "2.0",
-            method = method,
-            @params = args,
-            id = _idCounter
+            m = method,
+            p = parameters ?? new {}
         };
         
         var content = new StringContent(
@@ -635,7 +613,7 @@ public class RpcClient
             throw new Exception($"RPC Error: {result.error}");
         }
         
-        return JsonConvert.DeserializeObject<T>(result.result.ToString());
+        return result.result.ToObject<T>();
     }
 
     public async Task<bool> PingAsync()
@@ -652,13 +630,15 @@ public class RpcClient
 
     public async Task<dynamic> ReadSignalGroupAsync(string deviceId, string groupName)
     {
-        var result = await CallAsync<dynamic>("read_signal_group", deviceId, groupName);
+        var result = await CallAsync<dynamic>("read_signal_group", 
+            new { device_id = deviceId, group_name = groupName });
         return result.data;
     }
 
     public async Task WriteSignalGroupAsync(string deviceId, string groupName, object data)
     {
-        await CallAsync<dynamic>("write_signal_group", deviceId, groupName, data);
+        await CallAsync<dynamic>("write_signal_group",
+            new { device_id = deviceId, group_name = groupName, data = data });
     }
 }
 
@@ -729,7 +709,7 @@ tail -f /tmp/roboplc-middleware-test.log
 **解决方法**:
 1. 检查设备是否连接: `curl http://localhost:8081/api/devices`
 2. 检查 Mock Modbus 服务器日志
-3. 增加超时时间(修改中间件代码)
+3. 检查消息路由是否正常
 
 ### Q4: 读取的值与预期不符
 
@@ -739,6 +719,7 @@ tail -f /tmp/roboplc-middleware-test.log
 1. 检查 `byte_order` 配置
 2. 检查 `addressing_mode` 配置 (zero_based vs one_based)
 3. 验证 Mock Modbus 服务器的数据格式
+4. 检查信号组字段配置
 
 ### Q5: 如何模拟设备故障
 
@@ -823,10 +804,8 @@ mock_server.set_holding_register(100, 4660);  // 0x1234
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "read_signal_group",
-    "params": ["mock-device", "motor_control"],
-    "id": 1
+    "m": "read_signal_group",
+    "p": {"device_id": "mock-device", "group_name": "motor_control"}
   }'
 ```
 
@@ -840,16 +819,14 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "write_signal_group",
-    "params": [
-      "mock-device",
-      "temperature_sensor",
-      {
+    "m": "write_signal_group",
+    "p": {
+      "device_id": "mock-device",
+      "group_name": "temperature_sensor",
+      "data": {
         "temperature_1": 37.5
       }
-    ],
-    "id": 1
+    }
   }'
 ```
 
@@ -859,10 +836,8 @@ curl -X POST http://localhost:8080/jsonrpc \
 curl -X POST http://localhost:8080/jsonrpc \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "read_signal_group",
-    "params": ["mock-device", "temperature_sensor"],
-    "id": 2
+    "m": "read_signal_group",
+    "p": {"device_id": "mock-device", "group_name": "temperature_sensor"}
   }'
 ```
 
@@ -893,4 +868,5 @@ curl -X POST http://localhost:8080/jsonrpc \
 如有问题,请查看日志或参考其他文档:
 - [架构概览](../architecture.md)
 - [HTTP API](../http-api.md)
-- [配置管理](../configuration/配置管理.md)
+- [配置管理](../configuration.md)
+- [测试指南](./测试指南.md)

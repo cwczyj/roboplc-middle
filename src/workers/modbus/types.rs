@@ -9,7 +9,6 @@ use std::time::{Duration, SystemTime};
 const BASE_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_TIMEOUT: Duration = Duration::from_secs(30);
 const BACKOFF_BASE_MS: u64 = 100;
-#[allow(dead_code)]
 const BACKOFF_MAX_MS: u64 = 30000;
 
 // 全局事务计数器
@@ -53,8 +52,8 @@ pub struct Backoff {
     next_delay_ms: u64,
 }
 
-#[allow(dead_code)]
 impl Backoff {
+
     pub fn new() -> Self {
         Self {
             attempts: 0,
@@ -121,7 +120,6 @@ pub struct OperationQueue<T> {
     max_in_flight: usize,
 }
 
-#[allow(dead_code)]
 impl<T> OperationQueue<T> {
     pub fn new(max_in_flight: usize) -> Self {
         Self {
@@ -130,15 +128,15 @@ impl<T> OperationQueue<T> {
             max_in_flight,
         }
     }
-
+}
+#[cfg(test)]
+impl<T> OperationQueue<T> {
     fn push(&mut self, op: T) {
         self.pending.push_back(op);
     }
-
     fn can_start(&self) -> bool {
         self.in_flight < self.max_in_flight
     }
-
     fn start_next(&mut self) -> Option<T> {
         if self.can_start() {
             if let Some(op) = self.pending.pop_front() {
@@ -148,17 +146,14 @@ impl<T> OperationQueue<T> {
         }
         None
     }
-
     fn complete(&mut self) {
         if self.in_flight > 0 {
             self.in_flight -= 1;
         }
     }
-
     fn pending_count(&self) -> usize {
         self.pending.len()
     }
-
     fn in_flight_count(&self) -> usize {
         self.in_flight
     }

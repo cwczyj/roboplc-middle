@@ -131,7 +131,7 @@ HttpWorker 不维护任何内部状态，所有数据从共享状态（Variables
 ### 技术实现
 
 - 使用 **actix-web** 框架
-- 在 blocking worker 中spawn tokio runtime
+- 在 blocking worker 中 spawn tokio runtime
 - 通过 `AppState` 共享设备状态
 - 使用 `parking_lot_rt::RwLock` 实现并发安全读取
 
@@ -142,7 +142,26 @@ pub struct AppState {
     pub device_states: Arc<RwLock<HashMap<String, DeviceStatus>>>,
     pub config: Arc<Config>,
 }
+
+pub struct DeviceStatus {
+    pub connected: bool,
+    pub last_communication: Instant,
+    pub error_count: u32,
+    pub reconnect_count: u32,
+}
 ```
+
+### Worker 配置
+
+```rust
+#[derive(WorkerOpts)]
+#[worker_opts(name = "http_server", blocking = true)]
+pub struct HttpWorker {
+    config: Config,
+}
+```
+
+HttpWorker 配置为 `blocking = true`，在其内部 spawn tokio runtime 来运行 HTTP 服务器。
 
 ## 📝 相关文档
 
