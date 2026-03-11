@@ -12,52 +12,38 @@ use std::time::{Duration, SystemTime};
 use binrw::BinRead;
 use std::io::{Read, Seek};
 
-/// Raw coil data (bytes from parse_bool_u8)
+/// Raw binary data reader for Modbus responses
+/// Generic over element type: u8 for coils, u16 for registers
 #[derive(Debug)]
-struct CoilData {
-    values: Vec<u8>,
+struct BinaryData<T> {
+    values: Vec<T>,
 }
 
-impl BinRead for CoilData {
+impl<T: Copy + Default> BinRead for BinaryData<T>
+where
+    T: binrw::BinRead<Args<'static> = ()>,
+{
     type Args<'a> = ();
     
     fn read_options<R: Read + Seek>(
         reader: &mut R,
-        _endian: binrw::Endian,
+        endian: binrw::Endian,
         _args: Self::Args<'_>,
     ) -> binrw::BinResult<Self> {
         let mut values = Vec::new();
-        let mut buf = [0u8; 1];
-        while let Ok(()) = reader.read_exact(&mut buf) {
-            values.push(buf[0]);
+        loop {
+            match T::read_options(reader, endian, ()) {
+                Ok(val) => values.push(val),
+                Err(binrw::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(e),
+            }
         }
-        Ok(CoilData { values })
+        Ok(BinaryData { values })
     }
 }
 
-/// Raw register data (u16 values from parse_slice)
-#[derive(Debug)]
-struct RegisterData {
-    values: Vec<u16>,
-}
-
-impl BinRead for RegisterData {
-    type Args<'a> = ();
-    
-    fn read_options<R: Read + Seek>(
-        reader: &mut R,
-        _endian: binrw::Endian,
-        _args: Self::Args<'_>,
-    ) -> binrw::BinResult<Self> {
-        let mut values = Vec::new();
-        let mut buf = [0u8; 2];
-        // Read u16 values in big-endian (Modbus standard)
-        while reader.read_exact(&mut buf).is_ok() {
-            values.push(u16::from_be_bytes(buf));
-        }
-        Ok(RegisterData { values })
-    }
-}
+type CoilData = BinaryData<u8>;
+type RegisterData = BinaryData<u16>;
 
 // ==================== WriteValue ====================
 
@@ -90,12 +76,7 @@ pub struct OperationResult {
     pub error: Option<String>,
 }
 
-/// Queued operation with tracking information
-#[allow(dead_code)]
-pub struct QueuedOperation {
-    pub operation: ModbusOp,
-    pub correlation_id: u64,
-}
+
 
 // ==================== ModbusClient ====================
 
@@ -105,9 +86,6 @@ pub struct ModbusClient {
     unit_id: u8,
 }
 
-
-
-
 impl ModbusClient {
     pub fn new(endpoint: String, unit_id: u8) -> Self {
         Self {
@@ -116,21 +94,24 @@ impl ModbusClient {
             unit_id,
         }
     }
+
+    pub fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
+        let client = tcp::connect(&self.endpoint, timeout)?;
+        client.connect()?;
+        self.connection = Some(client);
+        Ok(())
+    }
     
     /// Probe connection by sending actual Modbus request
     /// 
     /// This is the only reliable way to detect if TCP connection is still alive.
     /// We read register 0 (which may not exist, but we'll get a response indicating connection status)
-    pub fn probe_connection(&mut self) -> bool {
+    fn probe_connection(&mut self) -> bool {
         match &self.connection {
             Some(_client) => {
-                // Try to perform an actual Modbus read operation
-                // This will fail quickly if connection is dead (RST received) or timeout if no response
                 let probe_op = ModbusOp::ReadHolding { address: 0, count: 1 };
-                let result = self.execute_operation_without_probe(&probe_op);
+                let result = self.execute_without_probe(&probe_op);
                 
-                // If we got any response (success or Modbus error), connection is alive
-                // Only consider connection dead on IO errors (connection closed/broken)
                 if result.success {
                     tracing::debug!("Connection probe succeeded");
                     true
@@ -151,72 +132,13 @@ impl ModbusClient {
         }
     }
     
-    /// Execute operation without probing (internal use)
-    fn execute_operation_without_probe(&self, op: &ModbusOp) -> OperationResult {
-        let client = match &self.connection {
-            Some(c) => c.clone(),
-            None => {
-                return OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some("Not connected".to_string()),
-                }
-            }
-        };
-
-        match op {
-            &ModbusOp::ReadCoil { address, count } => self.read_registers(&client, ModbusRegisterKind::Coil, address, count),
-            &ModbusOp::ReadDiscrete { address, count } => self.read_registers(&client, ModbusRegisterKind::Discrete, address, count),
-            &ModbusOp::ReadInput { address, count } => self.read_registers(&client, ModbusRegisterKind::Input, address, count),
-            &ModbusOp::ReadHolding { address, count } => self.read_registers(&client, ModbusRegisterKind::Holding, address, count),
-            &ModbusOp::WriteSingle { address, value } => {
-                self.write_registers(&client, address, &[WriteValue::Holding(value)])
-            }
-            &ModbusOp::WriteMultiple { address, ref values } => {
-                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Holding(v)).collect();
-                self.write_registers(&client, address, &write_values)
-            }
-            &ModbusOp::WriteSingleCoil { address, value } => {
-                self.write_registers(&client, address, &[WriteValue::Coil(value)])
-            }
-            &ModbusOp::WriteMultipleCoils { address, ref values } => {
-                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Coil(v)).collect();
-                self.write_registers(&client, address, &write_values)
-            }
-        }
-    }
-
-    pub fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
-        let client = tcp::connect(&self.endpoint, timeout)?;
-        client.connect()?;
-        self.connection = Some(client);
-        Ok(())
-    }
-
-    pub fn ensure_connected(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // If no connection, create one
-        if self.connection.is_none() {
-            tracing::debug!("No connection, creating new one");
-            self.connect(timeout)?;
-        }
-        Ok(())
-    }
-    
     /// Ensure connection with probe - for use before critical operations
-    pub fn ensure_connected_with_probe(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // First ensure we have a connection object
+    fn ensure_connected_with_probe(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         if self.connection.is_none() {
             self.connect(timeout)?;
             return Ok(());
         }
         
-        // Probe the connection - if it fails, reconnect
         if !self.probe_connection() {
             tracing::info!("Connection probe failed, reconnecting");
             self.connection = None;
@@ -224,6 +146,44 @@ impl ModbusClient {
         }
         
         Ok(())
+    }
+
+    /// Dispatch ModbusOp to appropriate handler
+    fn dispatch_op(&self, client: &Client, op: &ModbusOp) -> OperationResult {
+        match op {
+            &ModbusOp::ReadCoil { address, count } => 
+                self.read_registers(client, ModbusRegisterKind::Coil, address, count),
+            &ModbusOp::ReadDiscrete { address, count } => 
+                self.read_registers(client, ModbusRegisterKind::Discrete, address, count),
+            &ModbusOp::ReadInput { address, count } => 
+                self.read_registers(client, ModbusRegisterKind::Input, address, count),
+            &ModbusOp::ReadHolding { address, count } => 
+                self.read_registers(client, ModbusRegisterKind::Holding, address, count),
+            &ModbusOp::WriteSingle { address, value } => 
+                self.write_registers(client, address, &[WriteValue::Holding(value)]),
+            &ModbusOp::WriteMultiple { address, ref values } => {
+                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Holding(v)).collect();
+                self.write_registers(client, address, &write_values)
+            }
+            &ModbusOp::WriteSingleCoil { address, value } => 
+                self.write_registers(client, address, &[WriteValue::Coil(value)]),
+            &ModbusOp::WriteMultipleCoils { address, ref values } => {
+                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Coil(v)).collect();
+                self.write_registers(client, address, &write_values)
+            }
+        }
+    }
+    
+    /// Execute operation without probing (internal use only)
+    fn execute_without_probe(&self, op: &ModbusOp) -> OperationResult {
+        match &self.connection {
+            Some(c) => self.dispatch_op(c, op),
+            None => OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Not connected".to_string()),
+            },
+        }
     }
 
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
@@ -236,43 +196,9 @@ impl ModbusClient {
             };
         }
 
-        let client = match &self.connection {
-            Some(c) => c.clone(),
-            None => {
-                return OperationResult {
-                    success: false,
-                    data: JsonValue::Null,
-                    error: Some("Not connected".to_string()),
-                }
-            }
-        };
-
-        match op {
-            &ModbusOp::ReadCoil { address, count } => self.read_registers(&client, ModbusRegisterKind::Coil, address, count),
-            &ModbusOp::ReadDiscrete { address, count } => self.read_registers(&client, ModbusRegisterKind::Discrete, address, count),
-            &ModbusOp::ReadInput { address, count } => self.read_registers(&client, ModbusRegisterKind::Input, address, count),
-            &ModbusOp::ReadHolding { address, count } => self.read_registers(&client, ModbusRegisterKind::Holding, address, count),
-            &ModbusOp::WriteSingle { address, value } => {
-                self.write_registers(&client, address, &[WriteValue::Holding(value)])
-            }
-            &ModbusOp::WriteMultiple {
-                address,
-                ref values,
-            } => {
-                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Holding(v)).collect();
-                self.write_registers(&client, address, &write_values)
-            }
-            &ModbusOp::WriteSingleCoil { address, value } => {
-                self.write_registers(&client, address, &[WriteValue::Coil(value)])
-            }
-            &ModbusOp::WriteMultipleCoils {
-                address,
-                ref values,
-            } => {
-                let write_values: Vec<_> = values.iter().map(|&v| WriteValue::Coil(v)).collect();
-                self.write_registers(&client, address, &write_values)
-            }
-        }
+        // ensure_connected_with_probe guarantees connection.is_some()
+        let client = self.connection.as_ref().unwrap().clone();
+        self.dispatch_op(&client, op)
     }
 
     fn read_registers(
@@ -327,26 +253,8 @@ impl ModbusClient {
         }
     }
 
-    /// Unified write method that handles both Coil and Holding registers
+    /// Unified write method for Coil and Holding registers
     /// with automatic FC (Function Code) selection based on value count.
-    ///
-    /// # Arguments
-    /// * `client` - The Modbus client connection
-    /// * `address` - Starting register address
-    /// * `values` - Slice of WriteValue enum (Coil or Holding)
-    ///
-    /// # Returns
-    /// * `OperationResult` - Success/failure with latency info
-    ///
-    /// # Errors
-    /// * Empty values slice
-    /// * Mixed Coil and Holding types (values must be homogeneous)
-    ///
-    /// # FC Selection
-    /// * Single Coil: FC05 (Write Single Coil)
-    /// * Multiple Coils: FC15 (Write Multiple Coils)
-    /// * Single Holding: FC06 (Write Single Register)
-    /// * Multiple Holdings: FC16 (Write Multiple Registers)
     fn write_registers(
         &self,
         client: &Client,
@@ -376,127 +284,129 @@ impl ModbusClient {
             return OperationResult {
                 success: false,
                 data: JsonValue::Null,
-                error: Some(
-                    "Cannot mix Coil and Holding types in single write operation".to_string(),
-                ),
+                error: Some("Cannot mix Coil and Holding types in single write operation".to_string()),
             };
         }
 
-        // Determine register kind and perform write
+        // Dispatch to type-specific writer
         match first_kind {
-            WriteValue::Coil(_) => {
-                let coil_values: Vec<bool> = values
-                    .iter()
-                    .filter_map(|v| match v {
-                        WriteValue::Coil(b) => Some(*b),
-                        WriteValue::Holding(_) => None,
-                    })
-                    .collect();
+            WriteValue::Coil(_) => self.write_coils(client, address, values),
+            WriteValue::Holding(_) => self.write_holding_registers(client, address, values),
+        }
+    }
 
-                let count = coil_values.len() as u16;
-                let register = ModbusRegister::new(ModbusRegisterKind::Coil, address);
+    /// Write coil values with FC05 (single) or FC15 (multiple)
+    fn write_coils(
+        &self,
+        client: &Client,
+        address: u16,
+        values: &[WriteValue],
+    ) -> OperationResult {
+        let coil_values: Vec<bool> = values
+            .iter()
+            .filter_map(|v| match v {
+                WriteValue::Coil(b) => Some(*b),
+                WriteValue::Holding(_) => None,
+            })
+            .collect();
 
-                let mut mapping = match ModbusMapping::create(client, self.unit_id, register, count)
-                {
-                    Ok(m) => m,
-                    Err(e) => {
-                        return OperationResult {
-                            success: false,
-                            data: JsonValue::Null,
-                            error: Some(format!("Failed to create mapping: {}", e)),
-                        }
-                    }
-                };
+        let count = coil_values.len() as u16;
+        let register = ModbusRegister::new(ModbusRegisterKind::Coil, address);
 
-                let start = SystemTime::now();
-
-                let result = if count == 1 {
-                    // FC05: Write Single Coil - true = 0xFF00, false = 0x0000
-                    let coil_value: u16 = if coil_values[0] { 0xFF00 } else { 0x0000 };
-                    mapping.write(coil_value)
-                } else {
-                    // FC15: Write Multiple Coils - true = 0xFF, false = 0x00
-                    let coil_bytes: Vec<u8> = coil_values
-                        .iter()
-                        .map(|&b| if b { 0xFF } else { 0x00 })
-                        .collect();
-                    mapping.write(coil_bytes)
-                };
-
-                match result {
-                    Ok(()) => {
-                        let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
-                        OperationResult {
-                            success: true,
-                            data: serde_json::json!({
-                                "address": address,
-                                "count": count,
-                                "latency_us": latency
-                            }),
-                            error: None,
-                        }
-                    }
-                    Err(e) => OperationResult {
-                        success: false,
-                        data: JsonValue::Null,
-                        error: Some(format!("Coil write failed: {}", e)),
-                    },
+        let mut mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
+            Ok(m) => m,
+            Err(e) => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some(format!("Failed to create mapping: {}", e)),
                 }
             }
-            WriteValue::Holding(_) => {
-                let holding_values: Vec<u16> = values
-                    .iter()
-                    .filter_map(|v| match v {
-                        WriteValue::Holding(u) => Some(*u),
-                        WriteValue::Coil(_) => None,
-                    })
-                    .collect();
+        };
 
-                let count = holding_values.len() as u16;
-                let register = ModbusRegister::new(ModbusRegisterKind::Holding, address);
+        let start = SystemTime::now();
 
-                let mut mapping = match ModbusMapping::create(client, self.unit_id, register, count)
-                {
-                    Ok(m) => m,
-                    Err(e) => {
-                        return OperationResult {
-                            success: false,
-                            data: JsonValue::Null,
-                            error: Some(format!("Failed to create mapping: {}", e)),
-                        }
-                    }
-                };
+        let result = if count == 1 {
+            // FC05: Write Single Coil - true = 0xFF00, false = 0x0000
+            let coil_value: u16 = if coil_values[0] { 0xFF00 } else { 0x0000 };
+            mapping.write(coil_value)
+        } else {
+            // FC15: Write Multiple Coils - true = 0xFF, false = 0x00
+            let coil_bytes: Vec<u8> = coil_values.iter().map(|&b| if b { 0xFF } else { 0x00 }).collect();
+            mapping.write(coil_bytes)
+        };
 
-                let start = SystemTime::now();
+        self.build_write_result(result.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) }), address, count, start.elapsed().unwrap_or(Duration::ZERO))
+    }
 
-                let result = if count == 1 {
-                    // FC06: Write Single Register
-                    mapping.write(holding_values[0])
-                } else {
-                    // FC16: Write Multiple Registers
-                    mapping.write(holding_values)
-                };
+    /// Write holding register values with FC06 (single) or FC16 (multiple)
+    fn write_holding_registers(
+        &self,
+        client: &Client,
+        address: u16,
+        values: &[WriteValue],
+    ) -> OperationResult {
+        let holding_values: Vec<u16> = values
+            .iter()
+            .filter_map(|v| match v {
+                WriteValue::Holding(u) => Some(*u),
+                WriteValue::Coil(_) => None,
+            })
+            .collect();
 
-                match result {
-                    Ok(()) => {
-                        let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
-                        OperationResult {
-                            success: true,
-                            data: serde_json::json!({
-                                "address": address,
-                                "count": count,
-                                "latency_us": latency
-                            }),
-                            error: None,
-                        }
-                    }
-                    Err(e) => OperationResult {
-                        success: false,
-                        data: JsonValue::Null,
-                        error: Some(format!("Register write failed: {}", e)),
-                    },
+        let count = holding_values.len() as u16;
+        let register = ModbusRegister::new(ModbusRegisterKind::Holding, address);
+
+        let mut mapping = match ModbusMapping::create(client, self.unit_id, register, count) {
+            Ok(m) => m,
+            Err(e) => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some(format!("Failed to create mapping: {}", e)),
                 }
             }
+        };
+
+        let start = SystemTime::now();
+
+        let result = if count == 1 {
+            // FC06: Write Single Register
+            mapping.write(holding_values[0])
+        } else {
+            // FC16: Write Multiple Registers
+            mapping.write(holding_values)
+        };
+
+        self.build_write_result(result.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) }), address, count, start.elapsed().unwrap_or(Duration::ZERO))
+    }
+
+    /// Build OperationResult from write operation
+    fn build_write_result(
+        &self,
+        result: Result<(), Box<dyn std::error::Error>>,
+        address: u16,
+        count: u16,
+        duration: Duration,
+    ) -> OperationResult {
+        match result {
+            Ok(()) => {
+                let latency = duration.as_micros() as u64;
+                OperationResult {
+                    success: true,
+                    data: serde_json::json!({
+                        "address": address,
+                        "count": count,
+                        "latency_us": latency
+                    }),
+                    error: None,
+                }
+            }
+            Err(e) => OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some(format!("Write failed: {}", e)),
+            },
         }
     }
 }

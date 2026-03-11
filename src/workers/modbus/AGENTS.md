@@ -14,25 +14,29 @@ The `modbus/` submodule handles all Modbus TCP communication:
 
 ```
 modbus/
-├── mod.rs       # Module exports and re-exports
-├── client.rs    # ModbusClient - low-level TCP client (786 lines)
-├── worker.rs    # ModbusWorker - RoboPLC worker implementation (736 lines)
-├── operations.rs # Register operations and address parsing
-├── parsing.rs   # Signal group field encoding/decoding (537 lines)
-└── types.rs     # Shared types: Backoff, ConnectionState, etc.
+├── mod.rs        # Module exports and re-exports
+├── client.rs     # ModbusClient - low-level TCP client (~365 lines)
+├── worker.rs     # ModbusWorker - RoboPLC worker wrapper (~75 lines)
+├── handler.rs    # DeviceControlHandler - message handling logic (~430 lines)
+├── state.rs      # ModbusWorkerState - connection state management (~150 lines)
+├── operations.rs # Register operations and address parsing (~266 lines)
+├── parsing.rs    # Signal group encoding/decoding (~727 lines)
+└── types.rs      # Shared types: Backoff, ConnectionState, etc. (~290 lines)
 ```
 
 ## Key Types
 
 | Type | File | Purpose |
 |------|------|---------|
-| `ModbusWorker` | `worker.rs` | Main RoboPLC worker |
+| `ModbusWorker` | `worker.rs` | Main RoboPLC worker (wrapper with WorkerOpts) |
+| `DeviceControlHandler` | `handler.rs` | DeviceControl message handler |
+| `ModbusWorkerState` | `state.rs` | Internal state management |
 | `ModbusClient` | `client.rs` | TCP connection + frame handling |
-| `ModbusOp` | `client.rs` | Modbus function codes (ReadHolding, WriteSingle, etc.) |
-| `OperationQueue` | `types.rs` | Concurrent operation queue with max_in_flight |
+| `ModbusOp` | `client.rs` | Modbus function codes |
 | `Backoff` | `types.rs` | Exponential backoff for reconnection |
-| `TransactionId` | `types.rs` | Auto-incrementing transaction tracker |
+| `ConnectionState` | `types.rs` | Connection state enum |
 | `TimeoutHandler` | `types.rs` | Operation timeout management |
+| `RegisterType` | `operations.rs` | Register type enum (Coil, Discrete, Input, Holding) |
 
 ## Register Address Format
 
@@ -50,6 +54,9 @@ Example: `h100` = Holding Register at address 100
 ```rust
 #[derive(WorkerOpts)]
 #[worker_opts(name = "modbus_worker", cpu = 1, scheduling = "fifo", priority = 80)]
+pub struct ModbusWorker {
+    handler: DeviceControlHandler,
+}
 ```
 
 ## Connection Lifecycle
@@ -65,9 +72,11 @@ Example: `h100` = Holding Register at address 100
 |------|----------|-------|
 | Add register type | `operations.rs` | `RegisterType` enum |
 | Change backoff params | `types.rs` | `Backoff::new()` constants |
-| Add Modbus function | `client.rs` | `ModbusOp` enum + `execute()` |
+| Add Modbus function | `client.rs` | `ModbusOp` enum + `dispatch_op()` |
 | Signal encoding | `parsing.rs` | `encode_fields_to_registers()` |
-| Connection timeout | `worker.rs` | `connect()` method |
+| Message handling | `handler.rs` | `handle_device_control()` |
+| State management | `state.rs` | `ModbusWorkerState` |
+| Worker registration | `worker.rs` | `WorkerOpts` derive |
 
 ## Anti-Patterns
 
