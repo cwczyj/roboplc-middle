@@ -9,77 +9,26 @@ daily_rotation = false
 
 # 配置连接到 Mock Modbus 服务器
 [[devices]]
-id = "mock-device"
-type = "plc"
-address = "127.0.0.1"
-port = 5555
+id = "Test-Dobot"
+type = "robot_arm"
+address = "120.79.214.231"
+port = 502
 unit_id = 1
 addressing_mode = "zero_based"
-byte_order = "big_endian"
+byte_order = "little_endian_byte_swap"
 tcp_nodelay = true
 max_concurrent_ops = 3
 heartbeat_interval_sec = 30
 
 # 信号组 1: 电机控制
 [[devices.signal_groups]]
-name = "motor_control"
-description = "电机控制寄存器"
-register_address = "h100"
-register_count = 5
+name = "x"
+description = "x坐标值"
+register_address = "h1024"
+register_count = 2
 
 [[devices.signal_groups.fields]]
-name = "motor_speed"
-data_type = "u16"
-offset = 0
-
-[[devices.signal_groups.fields]]
-name = "motor_status"
-data_type = "u16"
-offset = 1
-
-[[devices.signal_groups.fields]]
-name = "motor_direction"
-data_type = "bool"
-offset = 2
-
-[[devices.signal_groups.fields]]
-name = "error_code"
-data_type = "u16"
-offset = 3
-
-[[devices.signal_groups.fields]]
-name = "fault_flag"
-data_type = "bool"
-offset = 4
-
-# 信号组 2: 传感器数据
-[[devices.signal_groups]]
-name = "temperature_sensor"
-description = "温度传感器数据"
-register_address = "h200"
-register_count = 10
-
-[[devices.signal_groups.fields]]
-name = "temperature_1"
+name = "x_value"
 data_type = "f32"
 offset = 0
 
-[[devices.signal_groups.fields]]
-name = "temperature_2"
-data_type = "f32"
-offset = 2
-
-[[devices.signal_groups.fields]]
-name = "humidity"
-data_type = "u16"
-offset = 4
-
-[[devices.signal_groups.fields]]
-name = "sensor_status"
-data_type = "u16"
-offset = 5
-
-[[devices.signal_groups.fields]]
-name = "alarm_code"
-data_type = "u16"
-offset = 6

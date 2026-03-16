@@ -549,9 +549,9 @@ mod tests {
 
     #[test]
     fn parse_with_little_endian_byte_swap() {
-        // Test LittleEndianByteSwap byte order
+        // Test LittleEndianByteSwap byte order (ABCD -> CDAB)
         // Input registers: [0x1234, 0x5678] -> bytes: [0x12, 0x34, 0x56, 0x78]
-        // LittleEndianByteSwap: swap bytes within each word -> [0x34, 0x12, 0x78, 0x56]
+        // LittleEndianByteSwap: swap 16-bit words -> [0x56, 0x78, 0x12, 0x34]
         let registers = vec![0x1234, 0x5678];
         let fields = vec![make_field("swapped", DataType::U32, 0)];
 
@@ -559,8 +559,8 @@ mod tests {
             parse_signal_group_fields(&registers, &fields, ByteOrder::LittleEndianByteSwap);
 
         assert_eq!(parsed.len(), 1);
-        // After swap and big-endian interpretation: 0x34127856 = 873625686
-        assert_eq!(parsed[0].value, 873625686.0);
+        // After swap and big-endian interpretation: 0x56781234 = 1450709556
+        assert_eq!(parsed[0].value, 1450709556.0);
     }
 
     #[test]

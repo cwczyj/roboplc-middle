@@ -159,17 +159,26 @@ fn bytes_len(data_type: &DataType) -> Option<usize> {
 ///
 /// This function handles all standard byte orders used in industrial protocols:
 /// - BigEndian: No change (MSB first)
-/// - LittleEndian: Reverse all bytes
-/// - LittleEndianByteSwap: Swap bytes within each 16-bit word
-/// - MidBig: Swap the two 16-bit words
+/// - LittleEndian: Reverse all bytes (ABCD -> DCBA)
+/// - LittleEndianByteSwap: Also known as "Mixed Big-Endian" or "Modicon endianness"
+///   For 32-bit values: swaps the two 16-bit words (ABCD -> CDAB)
+///   This is the byte order used by many Modbus devices for 32-bit registers
+/// - MidBig: Swap the two 16-bit words then reverse bytes within each word (ABCD -> DCBA -> BADC)
 pub fn convert_byte_order(data: &[u8], byte_order: ByteOrder) -> Vec<u8> {
     match byte_order {
         ByteOrder::BigEndian => data.to_vec(),
         ByteOrder::LittleEndian => data.iter().rev().copied().collect(),
-        ByteOrder::LittleEndianByteSwap => data
-            .chunks(2)
-            .flat_map(|chunk| chunk.iter().rev().copied())
-            .collect(),
+        ByteOrder::LittleEndianByteSwap => {
+            // LittleEndianByteSwap (ABCD -> CDAB):
+            // Swap the two 16-bit words (not bytes within words)
+            // [A, B, C, D] -> [C, D, A, B]
+            // This is commonly used in Modbus for 32-bit register values
+            if data.len() >= 4 {
+                vec![data[2], data[3], data[0], data[1]]
+            } else {
+                data.to_vec()
+            }
+        }
         ByteOrder::MidBig => data
             .chunks(2)
             .collect::<Vec<_>>()
@@ -375,11 +384,32 @@ mod tests {
     #[test]
     fn convert_byte_order_little_endian_byte_swap() {
         // Input: [0x12, 0x34, 0x56, 0x78]
-        // LittleEndianByteSwap: swap bytes within each word
-        // Result: [0x34, 0x12, 0x78, 0x56]
+        // LittleEndianByteSwap (ABCD -> CDAB): swap 16-bit words
+        // Result: [0x56, 0x78, 0x12, 0x34]
         let input = [0x12, 0x34, 0x56, 0x78];
         let result = convert_byte_order(&input, ByteOrder::LittleEndianByteSwap);
-        assert_eq!(result, [0x34, 0x12, 0x78, 0x56]);
+        assert_eq!(result, [0x56, 0x78, 0x12, 0x34]);
+    }
+
+    /// Test LittleEndianByteSwap roundtrip for F32
+    #[test]
+    fn convert_byte_order_little_endian_byte_swap_f32_roundtrip() {
+        // Test that F32 values roundtrip correctly with LittleEndianByteSwap
+        let test_value = 101.02_f64;
+        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+            test_value,
+            DataType::F32,
+            ByteOrder::LittleEndianByteSwap,
+        ).unwrap();
+        
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::F32,
+            ByteOrder::LittleEndianByteSwap,
+        ).unwrap();
+        
+        // Allow small floating point tolerance for f32
+        assert!((result - test_value).abs() < 0.001);
     }
 
     #[test]
