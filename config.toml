@@ -22,10 +22,10 @@ heartbeat_interval_sec = 30
 
 # 信号组 1: 电机控制
 [[devices.signal_groups]]
-name = "position"
+name = "position_and_euler"
 description = "x坐标值"
 register_address = "h1024"
-register_count = 12
+register_count = 24
 
 [[devices.signal_groups.fields]]
 name = "x_value"
@@ -41,3 +41,18 @@ offset = 4
 name = "z_value"
 data_type = "f64"
 offset = 8
+
+[[devices.signal_groups.fields]]
+name = "rx"
+data_type = "f64"
+offset = 12
+
+[[devices.signal_groups.fields]]
+name = "ry"
+data_type = "f64"
+offset = 16
+
+[[devices.signal_groups.fields]]
+name = "rz"
+data_type = "f64"
+offset = 20

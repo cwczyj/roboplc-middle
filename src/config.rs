@@ -59,7 +59,7 @@ pub struct Config {
 ///
 /// - `rpc_port`: JSON-RPC 服务器端口（默认 8080）
 /// - `http_port`: HTTP 管理接口端口（默认 8081）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Server {
     /// JSON-RPC 服务监听端口
     pub rpc_port: u16,
@@ -76,7 +76,7 @@ pub struct Server {
 /// - `level`: 日志级别（"trace", "debug", "info", "warn", "error"）
 /// - `file`: 日志文件路径
 /// - `daily_rotation`: 是否按天轮转日志文件
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Logging {
     /// 日志级别
     pub level: String,

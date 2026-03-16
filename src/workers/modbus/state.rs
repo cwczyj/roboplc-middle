@@ -34,6 +34,19 @@ impl ModbusWorkerState {
         &self.device
     }
 
+    /// Update device configuration (signal_groups) at runtime
+    pub fn update_device_config(&mut self, new_device: Device) {
+        // Only update signal_groups, keep connection state
+        tracing::info!(
+            device_id = %self.device.id,
+            old_signal_groups = self.device.signal_groups.len(),
+            new_signal_groups = new_device.signal_groups.len(),
+            "Updating device signal_groups"
+        );
+        self.device.signal_groups = new_device.signal_groups;
+        // Keep other device properties like id, address, etc. unchanged
+    }
+
     pub fn client(&self) -> Option<&ModbusClient> {
         self.client.as_ref()
     }

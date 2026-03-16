@@ -32,6 +32,11 @@ impl DeviceControlHandler {
         self.state.connection_state()
     }
 
+    /// Update device configuration from ConfigUpdate message
+    pub fn update_device_config(&mut self, new_device: Device) {
+        self.state.update_device_config(new_device);
+    }
+
     /// Resolve signal group by name
     fn resolve_signal_group(&self, group_name: &str) -> Option<&crate::config::SignalGroup> {
         self.state
