@@ -16,7 +16,7 @@ use tokio::time::Instant;
 #[serde(
     tag = "m",
     content = "p",
-    rename_all = "lowercase",
+    rename_all = "snake_case",
     deny_unknown_fields
 )]
 pub enum RpcMethod<'a> {

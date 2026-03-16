@@ -88,6 +88,12 @@ impl DataTypeConverter for DefaultDataTypeConverter {
             DataType::F32 => {
                 Some(f32::from_be_bytes([ordered[0], ordered[1], ordered[2], ordered[3]]) as f64)
             }
+            DataType::F64 => {
+                Some(f64::from_be_bytes([
+                    ordered[0], ordered[1], ordered[2], ordered[3],
+                    ordered[4], ordered[5], ordered[6], ordered[7],
+                ]))
+            }
             DataType::Bool => Some((ordered[0] != 0) as u8 as f64),
         }
     }
@@ -99,6 +105,7 @@ impl DataTypeConverter for DefaultDataTypeConverter {
             DataType::I16 => Some((value as i16).to_be_bytes().to_vec()),
             DataType::I32 => Some((value as i32).to_be_bytes().to_vec()),
             DataType::F32 => Some((value as f32).to_be_bytes().to_vec()),
+            DataType::F64 => Some(value.to_be_bytes().to_vec()),
             DataType::Bool => Some(vec![(value != 0.0) as u8]),
         }?;
 
@@ -147,10 +154,13 @@ impl RegisterPair {
 // ========== Private Helper Functions ==========
 
 /// Get the expected byte length for a given data type.
+/// 
+/// F64 requires 8 bytes (64 bits).
 fn bytes_len(data_type: &DataType) -> Option<usize> {
     match data_type {
         DataType::U16 | DataType::I16 => Some(2),
         DataType::U32 | DataType::I32 | DataType::F32 => Some(4),
+        DataType::F64 => Some(8),
         DataType::Bool => Some(1),
     }
 }
@@ -162,29 +172,34 @@ fn bytes_len(data_type: &DataType) -> Option<usize> {
 /// - LittleEndian: Reverse all bytes (ABCD -> DCBA)
 /// - LittleEndianByteSwap: Also known as "Mixed Big-Endian" or "Modicon endianness"
 ///   For 32-bit values: swaps the two 16-bit words (ABCD -> CDAB)
-///   This is the byte order used by many Modbus devices for 32-bit registers
-/// - MidBig: Swap the two 16-bit words then reverse bytes within each word (ABCD -> DCBA -> BADC)
+///   For 64-bit values (F64): swaps 16-bit words (ABCDEFGH -> GHEFCDAB)
+///   This is the byte order used by many Modbus devices for multi-register values
+/// - MidBig: Swap the two 16-bit words then reverse bytes within each word
 pub fn convert_byte_order(data: &[u8], byte_order: ByteOrder) -> Vec<u8> {
     match byte_order {
         ByteOrder::BigEndian => data.to_vec(),
         ByteOrder::LittleEndian => data.iter().rev().copied().collect(),
         ByteOrder::LittleEndianByteSwap => {
-            // LittleEndianByteSwap (ABCD -> CDAB):
-            // Swap the two 16-bit words (not bytes within words)
-            // [A, B, C, D] -> [C, D, A, B]
-            // This is commonly used in Modbus for 32-bit register values
-            if data.len() >= 4 {
+            // LittleEndianByteSwap: swap 16-bit words
+            // For 4 bytes (32-bit): [A, B, C, D] -> [C, D, A, B]
+            // For 8 bytes (64-bit): [A, B, C, D, E, F, G, H] -> [G, H, E, F, C, D, A, B]
+            if data.len() == 4 {
                 vec![data[2], data[3], data[0], data[1]]
+            } else if data.len() == 8 {
+                // F64: reverse the order of 16-bit words
+                vec![data[6], data[7], data[4], data[5], data[2], data[3], data[0], data[1]]
             } else {
                 data.to_vec()
             }
         }
-        ByteOrder::MidBig => data
-            .chunks(2)
-            .collect::<Vec<_>>()
-            .chunks(2)
-            .flat_map(|pair| pair.iter().rev().flat_map(|c| c.iter().copied()))
-            .collect(),
+        ByteOrder::MidBig => {
+            // MidBig: swap bytes within each 16-bit word
+            // For 4 bytes: [A, B, C, D] -> [B, A, D, C]
+            // For 8 bytes: [A, B, C, D, E, F, G, H] -> [B, A, D, C, F, E, H, G]
+            data.chunks(2)
+                .flat_map(|chunk| chunk.iter().rev().copied())
+                .collect()
+        }
     }
 }
 
@@ -371,6 +386,57 @@ mod tests {
         assert!((result_f32 - value_f32).abs() < 0.001);
     }
 
+    /// Test F64 roundtrip with BigEndian byte order
+    #[test]
+    fn to_bytes_f64_roundtrip_big_endian() {
+        let value = 123456789.012345_f64;
+        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+            value,
+            DataType::F64,
+            ByteOrder::BigEndian,
+        )
+        .unwrap();
+        assert_eq!(bytes.len(), 8); // F64 uses 8 bytes
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::F64,
+            ByteOrder::BigEndian,
+        )
+        .unwrap();
+        assert!((result - value).abs() < 0.0001);
+    }
+
+    /// Test F64 roundtrip with LittleEndianByteSwap byte order
+    #[test]
+    fn to_bytes_f64_roundtrip_little_endian_byte_swap() {
+        let value = 101.02_f64;
+        let bytes = <DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+            value,
+            DataType::F64,
+            ByteOrder::LittleEndianByteSwap,
+        )
+        .unwrap();
+        assert_eq!(bytes.len(), 8); // F64 uses 8 bytes
+        let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
+            &bytes,
+            DataType::F64,
+            ByteOrder::LittleEndianByteSwap,
+        )
+        .unwrap();
+        assert!((result - value).abs() < 0.0001);
+    }
+
+    /// Test F64 byte order conversion
+    #[test]
+    fn convert_byte_order_little_endian_byte_swap_f64() {
+        // Input: [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0]
+        // LittleEndianByteSwap for F64: swap 16-bit words
+        // [A, B, C, D, E, F, G, H] -> [G, H, E, F, C, D, A, B]
+        let input = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0];
+        let result = convert_byte_order(&input, ByteOrder::LittleEndianByteSwap);
+        assert_eq!(result, [0xDE, 0xF0, 0x9A, 0xBC, 0x56, 0x78, 0x12, 0x34]);
+    }
+
     #[test]
     fn bytes_len_correct() {
         assert_eq!(bytes_len(&DataType::U16), Some(2));
@@ -415,11 +481,12 @@ mod tests {
     #[test]
     fn convert_byte_order_mid_big() {
         // Input: [0x12, 0x34, 0x56, 0x78]
-        // MidBig: swap 16-bit words
-        // Result: [0x56, 0x78, 0x12, 0x34]
+        // MidBig: swap bytes within each 16-bit word
+        // [A, B, C, D] -> [B, A, D, C]
+        // Result: [0x34, 0x12, 0x78, 0x56]
         let input = [0x12, 0x34, 0x56, 0x78];
         let result = convert_byte_order(&input, ByteOrder::MidBig);
-        assert_eq!(result, [0x56, 0x78, 0x12, 0x34]);
+        assert_eq!(result, [0x34, 0x12, 0x78, 0x56]);
     }
 
     #[test]

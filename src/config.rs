@@ -295,10 +295,13 @@ impl SignalGroup {
 
 impl DataType {
     /// 返回该数据类型需要的寄存器数量
+    /// 
+    /// F64 需要 4 个寄存器（64 位 / 16 位 = 4）
     pub fn required_registers(&self) -> u16 {
         match self {
             DataType::U16 | DataType::I16 | DataType::Bool => 1,
             DataType::U32 | DataType::I32 | DataType::F32 => 2,
+            DataType::F64 => 4,
         }
     }
 }
@@ -306,6 +309,7 @@ impl DataType {
 /// 数据类型
 ///
 /// 定义寄存器中存储的数据类型。
+/// F64 需要 4 个连续的 16 位寄存器（64 位 = 4 * 16 位）
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DataType {
@@ -320,6 +324,8 @@ pub enum DataType {
     I32,
     /// 32 位浮点数 (IEEE 754)
     F32,
+    /// 64 位浮点数 (IEEE 754)
+    F64,
     /// 布尔值
     Bool,
 }

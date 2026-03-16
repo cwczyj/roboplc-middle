@@ -171,16 +171,20 @@ pub fn parse_signal_group_fields(
         let _byte_offset = (field.offset as usize) * 2;
 
         // Get required byte count for this data type
+        // F64 requires 8 bytes (4 registers)
         let byte_count = match field.data_type {
             DataType::Bool => 1,
             DataType::U16 | DataType::I16 => 2,
             DataType::U32 | DataType::I32 | DataType::F32 => 4,
+            DataType::F64 => 8,
         };
 
         // Check if we have enough registers for this field
+        // F64 requires 4 consecutive registers (64 bits / 16 bits = 4)
         let required_registers = match field.data_type {
             DataType::U16 | DataType::I16 | DataType::Bool => 1,
             DataType::U32 | DataType::I32 | DataType::F32 => 2,
+            DataType::F64 => 4,
         };
 
         if (field.offset as usize) + required_registers > registers.len() {
@@ -567,15 +571,16 @@ mod tests {
     fn parse_with_mid_big_byte_order() {
         // Test MidBig byte order
         // Input registers: [0x1234, 0x5678] -> bytes: [0x12, 0x34, 0x56, 0x78]
-        // MidBig: swap the two 16-bit words -> [0x56, 0x78, 0x12, 0x34]
+        // MidBig: swap bytes within each 16-bit word -> [0x34, 0x12, 0x78, 0x56]
+        // Interpreted as big-endian: 0x34127856 = 873625686
         let registers = vec![0x1234, 0x5678];
         let fields = vec![make_field("midbig", DataType::U32, 0)];
 
         let parsed = parse_signal_group_fields(&registers, &fields, ByteOrder::MidBig);
 
         assert_eq!(parsed.len(), 1);
-        // After swap and big-endian interpretation: 0x56781234 = 1450709556
-        assert_eq!(parsed[0].value, 1450709556.0);
+        // After swap and big-endian interpretation: 0x34127856 = 873625686
+        assert_eq!(parsed[0].value, 873625686.0);
     }
 
     #[test]
