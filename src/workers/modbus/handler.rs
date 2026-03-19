@@ -7,7 +7,7 @@ use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 
 use super::{
-    encode_fields_for_partial_write, encode_fields_to_registers, parse_register_address,
+    encode_fields_to_registers, parse_register_address,
     parse_signal_group_fields, ConnectionState, ModbusOp, RegisterType,
 };
 use crate::workers::modbus::state::ModbusWorkerState;
@@ -396,63 +396,82 @@ impl DeviceControlHandler {
     ) where
         F: FnMut(bool, JsonValue, Option<String>),
     {
-        let encoded_fields = encode_fields_for_partial_write(
-            fields_data,
-            fields,
-            self.state.device().byte_order.clone(),
-        );
-
-        if encoded_fields.is_empty() {
+        // Step 1: Validate completeness - all fields must be provided
+        if let Err(missing_fields) = self.validate_field_completeness(fields_data, fields) {
             send_response(
                 false,
                 JsonValue::Null,
-                Some("No valid fields to write".to_string()),
+                Some(format!(
+                    "Incomplete signal group: missing fields [{}]. All fields must be provided.",
+                    missing_fields.join(", ")
+                )),
             );
             return;
         }
 
-        let mut all_success = true;
-        let mut total_latency_us: u64 = 0;
-        let mut last_error: Option<String> = None;
-        let mut write_count = 0;
-
-        for encoded in encoded_fields {
-            let address = base_addr + encoded.offset;
-            let modbus_op = Self::create_write_op(reg_type, address, &encoded.registers);
-            let result = self.state.execute_operation(context, &modbus_op);
-            write_count += 1;
-
-            if result.success {
-                if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
-                    total_latency_us += latency;
-                }
-            } else {
-                all_success = false;
-                last_error = result.error.clone();
-                tracing::warn!(
-                    device_id = %self.state.device().id,
-                    field = %encoded.name,
-                    error = ?last_error,
-                    "Failed to write field"
+        // Step 2: Encode all fields to registers in one batch
+        let registers = match encode_fields_to_registers(
+            fields_data,
+            fields,
+            // Calculate total register count from fields
+            fields.iter()
+                .map(|f| f.offset as u16 + f.data_type.required_registers() as u16)
+                .max()
+                .unwrap_or(1),
+            self.state.device().byte_order.clone(),
+        ) {
+            Some(regs) => regs,
+            None => {
+                send_response(
+                    false,
+                    JsonValue::Null,
+                    Some("Failed to encode fields to registers".to_string()),
                 );
+                return;
+            }
+        };
+
+        // Step 3: Single batch write operation
+        let modbus_op = Self::create_write_op(reg_type, base_addr, &registers);
+        let result = self.state.execute_operation(context, &modbus_op);
+
+        if result.success {
+            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
+                self.state.record_communication(context, latency);
             }
         }
 
-        if total_latency_us > 0 {
-            self.state.record_communication(context, total_latency_us);
-        }
-
         send_response(
-            all_success,
+            result.success,
             serde_json::json!({
                 "group_name": group_name,
-                "result": {
-                    "writes": write_count,
-                    "latency_us": total_latency_us
-                }
+                "result": result.data
             }),
-            last_error,
+            result.error,
         );
+    }
+
+    /// Validate that all required fields are provided in the request
+    ///
+    /// Returns Ok(()) if all fields are present, Err(Vec<&str>) with missing field names
+    fn validate_field_completeness(
+        &self,
+        provided_fields: &serde_json::Map<String, JsonValue>,
+        required_fields: &[crate::config::FieldMapping],
+    ) -> Result<(), Vec<String>> {
+        let mut missing = Vec::new();
+
+        for required in required_fields {
+            if !provided_fields.contains_key(&required.name) {
+                missing.push(required.name.clone());
+            }
+        }
+
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(missing)
+        }
     }
 
     fn handle_raw_values_write<F>(
@@ -488,5 +507,108 @@ impl DeviceControlHandler {
                 Some(format!("Invalid signal group: {}", group_name)),
             );
         }
+    }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ByteOrder, DataType, Device, DeviceType, FieldMapping};
+
+    fn make_field(name: &str, data_type: DataType, offset: u16) -> FieldMapping {
+        FieldMapping {
+            name: name.to_string(),
+            data_type,
+            offset,
+        }
+    }
+
+    fn create_test_device() -> Device {
+        Device {
+            id: "test-device".to_string(),
+            device_type: DeviceType::Plc,
+            address: "127.0.0.1".to_string(),
+            port: 502,
+            unit_id: 1,
+            addressing_mode: Default::default(),
+            byte_order: ByteOrder::BigEndian,
+            tcp_nodelay: true,
+            max_concurrent_ops: 3,
+            heartbeat_interval_sec: 30,
+            signal_groups: vec![],
+        }
+    }
+
+    #[test]
+    fn validate_field_completeness_all_fields_provided() {
+        let handler = DeviceControlHandler::new(create_test_device());
+        
+        let mut provided = serde_json::Map::new();
+        provided.insert("field1".to_string(), serde_json::json!(100));
+        provided.insert("field2".to_string(), serde_json::json!(200));
+        
+        let required = vec![
+            make_field("field1", DataType::U16, 0),
+            make_field("field2", DataType::U16, 1),
+        ];
+        
+        let result = handler.validate_field_completeness(&provided, &required);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_field_completeness_missing_fields() {
+        let handler = DeviceControlHandler::new(create_test_device());
+        
+        let mut provided = serde_json::Map::new();
+        provided.insert("field1".to_string(), serde_json::json!(100));
+        // Missing field2
+        
+        let required = vec![
+            make_field("field1", DataType::U16, 0),
+            make_field("field2", DataType::U16, 1),
+            make_field("field3", DataType::U16, 2),
+        ];
+        
+        let result = handler.validate_field_completeness(&provided, &required);
+        assert!(result.is_err());
+        let missing = result.unwrap_err();
+        assert_eq!(missing.len(), 2);
+        assert!(missing.contains(&"field2".to_string()));
+        assert!(missing.contains(&"field3".to_string()));
+    }
+
+    #[test]
+    fn validate_field_completeness_empty_provided() {
+        let handler = DeviceControlHandler::new(create_test_device());
+        
+        let provided = serde_json::Map::new();
+        
+        let required = vec![
+            make_field("field1", DataType::U16, 0),
+            make_field("field2", DataType::U16, 1),
+        ];
+        
+        let result = handler.validate_field_completeness(&provided, &required);
+        assert!(result.is_err());
+        let missing = result.unwrap_err();
+        assert_eq!(missing.len(), 2);
+    }
+
+    #[test]
+    fn validate_field_completeness_no_required_fields() {
+        let handler = DeviceControlHandler::new(create_test_device());
+        
+        let mut provided = serde_json::Map::new();
+        provided.insert("field1".to_string(), serde_json::json!(100));
+        
+        let required: Vec<FieldMapping> = vec![];
+        
+        let result = handler.validate_field_completeness(&provided, &required);
+        assert!(result.is_ok());
     }
 }

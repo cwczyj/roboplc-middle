@@ -4,14 +4,14 @@ http_port = 8081
 
 [logging]
 level = "info"
-file = "/tmp/roboplc-middleware-test.log"
+file = ""
 daily_rotation = false
 
 # 配置连接到 Mock Modbus 服务器
 [[devices]]
 id = "Test-Dobot"
 type = "robot_arm"
-address = "120.79.214.231"
+address = "192.168.201.1"
 port = 502
 unit_id = 1
 addressing_mode = "zero_based"
@@ -25,6 +25,42 @@ heartbeat_interval_sec = 30
 name = "position_and_euler"
 description = "x坐标值"
 register_address = "h1024"
+register_count = 24
+
+[[devices.signal_groups.fields]]
+name = "x_value"
+data_type = "f64"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "y_value"
+data_type = "f64"
+offset = 4
+
+[[devices.signal_groups.fields]]
+name = "z_value"
+data_type = "f64"
+offset = 8
+
+[[devices.signal_groups.fields]]
+name = "rx"
+data_type = "f64"
+offset = 12
+
+[[devices.signal_groups.fields]]
+name = "ry"
+data_type = "f64"
+offset = 16
+
+[[devices.signal_groups.fields]]
+name = "rz"
+data_type = "f64"
+offset = 20
+
+[[devices.signal_groups]]
+name = "real_time_position_and_euler"
+description = "实时位置和欧拉角"
+register_address = "i1384"
 register_count = 24
 
 [[devices.signal_groups.fields]]

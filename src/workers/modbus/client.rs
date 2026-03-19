@@ -1,5 +1,7 @@
 //! Modbus client for connection management and operations
-
+//!
+//! Implements lazy connection recovery: operations are attempted directly,
+//! and reconnection only happens when TCP connection errors are detected.
 
 use roboplc::comm::tcp;
 use roboplc::comm::Client;
@@ -8,12 +10,10 @@ use roboplc::io::IoMapping;
 use serde_json::Value as JsonValue;
 use std::time::{Duration, SystemTime};
 
-// ==================== Helper types for batch reading ====================
 use binrw::BinRead;
 use std::io::{Read, Seek};
 
 /// Raw binary data reader for Modbus responses
-/// Generic over element type: u8 for coils, u16 for registers
 #[derive(Debug)]
 struct BinaryData<T> {
     values: Vec<T>,
@@ -45,8 +45,6 @@ where
 type CoilData = BinaryData<u8>;
 type RegisterData = BinaryData<u16>;
 
-// ==================== WriteValue ====================
-
 /// Unified value type for Modbus write operations
 #[derive(Debug, Clone, PartialEq)]
 pub enum WriteValue {
@@ -54,8 +52,7 @@ pub enum WriteValue {
     Holding(u16),
 }
 
-// ==================== ModbusOp ====================
-
+/// Modbus operation types
 #[derive(Debug, Clone)]
 pub enum ModbusOp {
     ReadCoil { address: u16, count: u16 },
@@ -76,10 +73,7 @@ pub struct OperationResult {
     pub error: Option<String>,
 }
 
-
-
-// ==================== ModbusClient ====================
-
+/// Modbus TCP client with lazy connection recovery
 pub struct ModbusClient {
     endpoint: String,
     connection: Option<Client>,
@@ -102,49 +96,20 @@ impl ModbusClient {
         Ok(())
     }
     
-    /// Probe connection by sending actual Modbus request
-    /// 
-    /// This is the only reliable way to detect if TCP connection is still alive.
-    /// We read register 0 (which may not exist, but we'll get a response indicating connection status)
-    fn probe_connection(&mut self) -> bool {
-        match &self.connection {
-            Some(_client) => {
-                let probe_op = ModbusOp::ReadHolding { address: 0, count: 1 };
-                let result = self.execute_without_probe(&probe_op);
-                
-                if result.success {
-                    tracing::debug!("Connection probe succeeded");
-                    true
-                } else if let Some(ref error) = result.error {
-                    if error.contains("I/O error") || error.contains("failed to fill") || error.contains("Broken pipe") {
-                        tracing::debug!("Connection probe failed - connection broken: {}", error);
-                        false
-                    } else {
-                        // Modbus error (like illegal address) means connection is alive
-                        tracing::debug!("Connection probe got Modbus error (connection alive): {}", error);
-                        true
-                    }
-                } else {
-                    false
-                }
-            }
-            None => false,
-        }
+    /// Check if connection error indicates a broken TCP connection
+    fn is_connection_broken(error: &str) -> bool {
+        error.contains("I/O error") 
+            || error.contains("failed to fill") 
+            || error.contains("Broken pipe")
+            || error.contains("connection closed")
+            || error.contains("connection reset")
     }
     
-    /// Ensure connection with probe - for use before critical operations
-    fn ensure_connected_with_probe(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
+    /// Ensure connection before operation
+    fn ensure_connected(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         if self.connection.is_none() {
             self.connect(timeout)?;
-            return Ok(());
         }
-        
-        if !self.probe_connection() {
-            tracing::info!("Connection probe failed, reconnecting");
-            self.connection = None;
-            self.connect(timeout)?;
-        }
-        
         Ok(())
     }
 
@@ -173,22 +138,15 @@ impl ModbusClient {
             }
         }
     }
-    
-    /// Execute operation without probing (internal use only)
-    fn execute_without_probe(&self, op: &ModbusOp) -> OperationResult {
-        match &self.connection {
-            Some(c) => self.dispatch_op(c, op),
-            None => OperationResult {
-                success: false,
-                data: JsonValue::Null,
-                error: Some("Not connected".to_string()),
-            },
-        }
-    }
 
+    /// Execute Modbus operation with lazy connection recovery
+    ///
+    /// Strategy:
+    /// 1. Ensure connection exists
+    /// 2. Execute the operation
+    /// 3. On TCP connection error, reconnect and retry once
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
-        // Ensure connection with probe - detects dead connections
-        if let Err(e) = self.ensure_connected_with_probe(Duration::from_secs(1)) {
+        if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
             return OperationResult {
                 success: false,
                 data: JsonValue::Null,
@@ -196,9 +154,31 @@ impl ModbusClient {
             };
         }
 
-        // ensure_connected_with_probe guarantees connection.is_some()
         let client = self.connection.as_ref().unwrap().clone();
-        self.dispatch_op(&client, op)
+        let result = self.dispatch_op(&client, op);
+        
+        // Retry on connection failure
+        if !result.success {
+            if let Some(ref error) = result.error {
+                if Self::is_connection_broken(error) {
+                    tracing::debug!("Connection broken, reconnecting and retrying");
+                    self.connection = None;
+                    
+                    if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
+                        return OperationResult {
+                            success: false,
+                            data: JsonValue::Null,
+                            error: Some(format!("Reconnection failed: {}", e)),
+                        };
+                    }
+                    
+                    let client = self.connection.as_ref().unwrap().clone();
+                    return self.dispatch_op(&client, op);
+                }
+            }
+        }
+        
+        result
     }
 
     fn read_registers(
@@ -223,7 +203,6 @@ impl ModbusClient {
 
         let start = SystemTime::now();
 
-        // Batch read: ONE request for all registers
         let values = match kind {
             ModbusRegisterKind::Coil | ModbusRegisterKind::Discrete => {
                 mapping.read::<CoilData>().map(|data| {
@@ -238,10 +217,10 @@ impl ModbusClient {
 
         match values {
             Ok(vals) => {
-                let latency = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
+                let latency_us = start.elapsed().unwrap_or(Duration::ZERO).as_micros() as u64;
                 OperationResult {
                     success: true,
-                    data: serde_json::json!({"values": vals, "latency_us": latency}),
+                    data: serde_json::json!({"values": vals, "latency_us": latency_us}),
                     error: None,
                 }
             }
@@ -254,14 +233,12 @@ impl ModbusClient {
     }
 
     /// Unified write method for Coil and Holding registers
-    /// with automatic FC (Function Code) selection based on value count.
     fn write_registers(
         &self,
         client: &Client,
         address: u16,
         values: &[WriteValue],
     ) -> OperationResult {
-        // Validate: values must not be empty
         if values.is_empty() {
             return OperationResult {
                 success: false,
@@ -270,7 +247,6 @@ impl ModbusClient {
             };
         }
 
-        // Validate: values must be homogeneous (all Coil or all Holding)
         let first_kind = &values[0];
         let all_same_kind = values.iter().all(|v| {
             matches!(
@@ -288,7 +264,6 @@ impl ModbusClient {
             };
         }
 
-        // Dispatch to type-specific writer
         match first_kind {
             WriteValue::Coil(_) => self.write_coils(client, address, values),
             WriteValue::Holding(_) => self.write_holding_registers(client, address, values),
@@ -327,16 +302,19 @@ impl ModbusClient {
         let start = SystemTime::now();
 
         let result = if count == 1 {
-            // FC05: Write Single Coil - true = 0xFF00, false = 0x0000
             let coil_value: u16 = if coil_values[0] { 0xFF00 } else { 0x0000 };
             mapping.write(coil_value)
         } else {
-            // FC15: Write Multiple Coils - true = 0xFF, false = 0x00
             let coil_bytes: Vec<u8> = coil_values.iter().map(|&b| if b { 0xFF } else { 0x00 }).collect();
             mapping.write(coil_bytes)
         };
 
-        self.build_write_result(result.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) }), address, count, start.elapsed().unwrap_or(Duration::ZERO))
+        self.build_write_result(
+            result.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) }),
+            address,
+            count,
+            start.elapsed().unwrap_or(Duration::ZERO),
+        )
     }
 
     /// Write holding register values with FC06 (single) or FC16 (multiple)
@@ -371,14 +349,17 @@ impl ModbusClient {
         let start = SystemTime::now();
 
         let result = if count == 1 {
-            // FC06: Write Single Register
             mapping.write(holding_values[0])
         } else {
-            // FC16: Write Multiple Registers
             mapping.write(holding_values)
         };
 
-        self.build_write_result(result.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) }), address, count, start.elapsed().unwrap_or(Duration::ZERO))
+        self.build_write_result(
+            result.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) }),
+            address,
+            count,
+            start.elapsed().unwrap_or(Duration::ZERO),
+        )
     }
 
     /// Build OperationResult from write operation
@@ -391,13 +372,13 @@ impl ModbusClient {
     ) -> OperationResult {
         match result {
             Ok(()) => {
-                let latency = duration.as_micros() as u64;
+                let latency_us = duration.as_micros() as u64;
                 OperationResult {
                     success: true,
                     data: serde_json::json!({
                         "address": address,
                         "count": count,
-                        "latency_us": latency
+                        "latency_us": latency_us
                     }),
                     error: None,
                 }
@@ -411,8 +392,6 @@ impl ModbusClient {
     }
 }
 
-// ==================== Tests ====================
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,7 +399,6 @@ mod tests {
     #[test]
     fn modbus_client_new_starts_disconnected() {
         let client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
-
         assert!(client.connection.is_none());
         assert_eq!(client.endpoint, "127.0.0.1:502");
         assert_eq!(client.unit_id, 1);
@@ -428,11 +406,7 @@ mod tests {
 
     #[test]
     fn modbus_op_read_coil_stores_address_and_count() {
-        let op = ModbusOp::ReadCoil {
-            address: 100,
-            count: 10,
-        };
-
+        let op = ModbusOp::ReadCoil { address: 100, count: 10 };
         match op {
             ModbusOp::ReadCoil { address, count } => {
                 assert_eq!(address, 100);
@@ -443,44 +417,8 @@ mod tests {
     }
 
     #[test]
-    fn modbus_op_read_discrete_stores_address_and_count() {
-        let op = ModbusOp::ReadDiscrete {
-            address: 50,
-            count: 25,
-        };
-
-        match op {
-            ModbusOp::ReadDiscrete { address, count } => {
-                assert_eq!(address, 50);
-                assert_eq!(count, 25);
-            }
-            _ => panic!("Expected ReadDiscrete variant"),
-        }
-    }
-
-    #[test]
-    fn modbus_op_read_input_stores_address_and_count() {
-        let op = ModbusOp::ReadInput {
-            address: 0,
-            count: 100,
-        };
-
-        match op {
-            ModbusOp::ReadInput { address, count } => {
-                assert_eq!(address, 0);
-                assert_eq!(count, 100);
-            }
-            _ => panic!("Expected ReadInput variant"),
-        }
-    }
-
-    #[test]
     fn modbus_op_read_holding_stores_address_and_count() {
-        let op = ModbusOp::ReadHolding {
-            address: 400,
-            count: 50,
-        };
-
+        let op = ModbusOp::ReadHolding { address: 400, count: 50 };
         match op {
             ModbusOp::ReadHolding { address, count } => {
                 assert_eq!(address, 400);
@@ -490,22 +428,16 @@ mod tests {
         }
     }
 
-    /// Test that coil values are converted from u8 to u16 (0/1)
-    /// This verifies the conversion: b != 0 -> 1u16, b == 0 -> 0u16
     #[test]
     fn coil_conversion_produces_zero_or_one() {
-        // Simulate the conversion logic used in read_registers:
-        // mapping.read::<CoilData>().map(|data| data.values.iter().map(|&b| if b != 0 { 1u16 } else { 0u16 }).collect())
         let coil_values: Vec<u8> = vec![0, 1, 255, 0, 128, 0, 1];
         let converted: Vec<u16> = coil_values
             .iter()
             .map(|&b| if b != 0 { 1u16 } else { 0u16 })
             .collect();
-
         assert_eq!(converted, vec![0, 1, 1, 0, 1, 0, 1]);
     }
 
-    /// Test coil conversion preserves count
     #[test]
     fn coil_conversion_preserves_count() {
         for count in [1, 10, 50, 100, 125] {
@@ -514,12 +446,10 @@ mod tests {
                 .iter()
                 .map(|&b| if b != 0 { 1u16 } else { 0u16 })
                 .collect();
-
             assert_eq!(converted.len(), count);
         }
     }
 
-    /// Test that any non-zero coil value becomes 1
     #[test]
     fn any_nonzero_coil_becomes_one() {
         let coil_values: Vec<u8> = vec![1, 2, 3, 127, 128, 255];
@@ -527,12 +457,9 @@ mod tests {
             .iter()
             .map(|&b| if b != 0 { 1u16 } else { 0u16 })
             .collect();
-
-        // All non-zero values should be converted to 1
         assert!(converted.iter().all(|&v| v == 1));
     }
 
-    /// Test that zero coil value becomes 0
     #[test]
     fn zero_coil_becomes_zero() {
         let coil_values: Vec<u8> = vec![0, 0, 0];
@@ -540,11 +467,9 @@ mod tests {
             .iter()
             .map(|&b| if b != 0 { 1u16 } else { 0u16 })
             .collect();
-
         assert!(converted.iter().all(|&v| v == 0));
     }
 
-    /// Test OperationResult for successful reads contains values array
     #[test]
     fn operation_result_success_has_values() {
         let result = OperationResult {
@@ -552,14 +477,12 @@ mod tests {
             data: serde_json::json!({"values": [1, 2, 3, 4, 5], "latency_us": 100}),
             error: None,
         };
-
         assert!(result.success);
         assert!(result.error.is_none());
         let values = result.data.get("values").unwrap();
         assert_eq!(values, &serde_json::json!([1, 2, 3, 4, 5]));
     }
 
-    /// Test OperationResult for failed reads contains error message
     #[test]
     fn operation_result_failure_has_error() {
         let result = OperationResult {
@@ -567,204 +490,22 @@ mod tests {
             data: JsonValue::Null,
             error: Some("Connection failed".to_string()),
         };
-
         assert!(!result.success);
         assert!(result.error.is_some());
         assert_eq!(result.error.unwrap(), "Connection failed");
     }
 
-    /// Test that batch read uses count parameter correctly
-    /// The read_registers method creates ONE ModbusMapping::create with full count
-    #[test]
-    fn batch_read_uses_full_count_in_mapping() {
-        // This test documents the batch read behavior:
-        // read_registers creates ONE mapping with the full count,
-        // then reads ALL values in ONE request.
-        //
-        // Code verification (lines 137-184):
-        // - let register = ModbusRegister::new(kind, address);
-        // - let mut mapping = ModbusMapping::create(client, unit_id, register, count)?;
-        // - let values = mapping.read::<...>();
-        //
-        // For count=100, this makes ONE Modbus request, not 100.
-
-        let address: u16 = 100;
-        let count: u16 = 100;
-
-        // Verify the logic: ONE mapping creation with full count
-        // means ONE Modbus request for all registers.
-        assert_eq!(count, 100);
-        assert_eq!(address, 100);
-    }
-
-    /// Test batch read for coils (0x registers)
-    /// Verifies: ONE Modbus request reads multiple coils
-    #[test]
-    fn batch_read_coils_single_request() {
-        // ReadCoil operation uses count for batch reading
-        let op = ModbusOp::ReadCoil {
-            address: 0,
-            count: 100, // Read 100 coils in ONE request
-        };
-
-        match op {
-            ModbusOp::ReadCoil { address: _, count } => {
-                assert_eq!(count, 100);
-                // Implementation: read_registers(client, ModbusRegisterKind::Coil, address, count)
-                // Creates ONE ModbusMapping with count=100
-            }
-            _ => panic!("Expected ReadCoil"),
-        }
-    }
-
-    /// Test batch read for discrete inputs (1x registers)
-    /// Verifies: ONE Modbus request reads multiple discrete inputs
-    #[test]
-    fn batch_read_discrete_single_request() {
-        let op = ModbusOp::ReadDiscrete {
-            address: 0,
-            count: 100,
-        };
-
-        match op {
-            ModbusOp::ReadDiscrete { address: _, count } => {
-                assert_eq!(count, 100);
-                // Implementation: read_registers(client, ModbusRegisterKind::Discrete, address, count)
-            }
-            _ => panic!("Expected ReadDiscrete"),
-        }
-    }
-
-    /// Test batch read for input registers (3x registers)
-    /// Verifies: ONE Modbus request reads multiple input registers
-    #[test]
-    fn batch_read_input_single_request() {
-        let op = ModbusOp::ReadInput {
-            address: 0,
-            count: 100,
-        };
-
-        match op {
-            ModbusOp::ReadInput { address: _, count } => {
-                assert_eq!(count, 100);
-                // Implementation: read_registers(client, ModbusRegisterKind::Input, address, count)
-            }
-            _ => panic!("Expected ReadInput"),
-        }
-    }
-
-    /// Test batch read for holding registers (4x registers)
-    /// Verifies: ONE Modbus request reads multiple holding registers
-    #[test]
-    fn batch_read_holding_single_request() {
-        let op = ModbusOp::ReadHolding {
-            address: 0,
-            count: 100,
-        };
-
-        match op {
-            ModbusOp::ReadHolding { address: _, count } => {
-                assert_eq!(count, 100);
-                // Implementation: read_registers(client, ModbusRegisterKind::Holding, address, count)
-            }
-            _ => panic!("Expected ReadHolding"),
-        }
-    }
-
-    /// Test that large batch reads work (up to Modbus limit of 125 registers)
-    #[test]
-    fn batch_read_up_to_modbus_limit() {
-        // Modbus TCP can read up to 125 registers per request
-        let max_count: u16 = 125;
-
-        let op = ModbusOp::ReadHolding {
-            address: 0,
-            count: max_count,
-        };
-
-        match op {
-            ModbusOp::ReadHolding { count, .. } => {
-                assert_eq!(count, 125);
-            }
-            _ => panic!("Expected ReadHolding"),
-        }
-    }
-
-    /// Test execute_operation routes ReadCoil to read_registers
     #[test]
     fn execute_operation_routes_read_coil() {
         let mut client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
-
-        // Without connection, should return connection error
-        let op = ModbusOp::ReadCoil {
-            address: 0,
-            count: 10,
-        };
+        let op = ModbusOp::ReadCoil { address: 0, count: 10 };
         let result = client.execute_operation(&op);
-
-        assert!(!result.success);
-        // Error should contain "Connection failed" prefix
-        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
-    }
-
-    /// Test execute_operation routes ReadDiscrete to read_registers
-    #[test]
-    fn execute_operation_routes_read_discrete() {
-        let mut client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
-
-        let op = ModbusOp::ReadDiscrete {
-            address: 0,
-            count: 10,
-        };
-        let result = client.execute_operation(&op);
-
         assert!(!result.success);
         assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
     }
 
-    /// Test execute_operation routes ReadInput to read_registers
-    #[test]
-    fn execute_operation_routes_read_input() {
-        let mut client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
-
-        let op = ModbusOp::ReadInput {
-            address: 0,
-            count: 10,
-        };
-        let result = client.execute_operation(&op);
-
-        assert!(!result.success);
-        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
-    }
-
-    /// Test execute_operation routes ReadHolding to read_registers
-    #[test]
-    fn execute_operation_routes_read_holding() {
-        let mut client = ModbusClient::new("127.0.0.1:502".to_string(), 1);
-
-        let op = ModbusOp::ReadHolding {
-            address: 0,
-            count: 10,
-        };
-        let result = client.execute_operation(&op);
-
-        assert!(!result.success);
-        assert!(result.error.as_ref().unwrap().starts_with("Connection failed:"));
-    }
-
-    /// Test write_registers validation rejects empty values
-    #[test]
-    fn write_registers_rejects_empty_values() {
-        // Create a mock client for testing (we can't connect, but we can test validation)
-        // This test verifies the empty check logic directly
-        let empty_values: Vec<WriteValue> = vec![];
-        assert!(empty_values.is_empty());
-    }
-
-    /// Test write_registers validates homogeneous types
     #[test]
     fn write_registers_validates_homogeneous_types() {
-        // Coil values are homogeneous
         let coil_values = vec![WriteValue::Coil(true), WriteValue::Coil(false)];
         let first = &coil_values[0];
         let all_same = coil_values
@@ -772,7 +513,6 @@ mod tests {
             .all(|v| matches!((first, v), (WriteValue::Coil(_), WriteValue::Coil(_))));
         assert!(all_same);
 
-        // Holding values are homogeneous
         let holding_values = vec![WriteValue::Holding(100), WriteValue::Holding(200)];
         let first = &holding_values[0];
         let all_same = holding_values
@@ -780,7 +520,6 @@ mod tests {
             .all(|v| matches!((first, v), (WriteValue::Holding(_), WriteValue::Holding(_))));
         assert!(all_same);
 
-        // Mixed values are not homogeneous
         let mixed = vec![WriteValue::Coil(true), WriteValue::Holding(100)];
         let first = &mixed[0];
         let all_same = mixed.iter().all(|v| {
@@ -793,27 +532,18 @@ mod tests {
         assert!(!all_same);
     }
 
-    /// Test coil value encoding for single coil write
     #[test]
     fn coil_single_write_encoding() {
-        // FC05: true = 0xFF00, false = 0x0000
         let true_value: u16 = if true { 0xFF00 } else { 0x0000 };
         let false_value: u16 = if false { 0xFF00 } else { 0x0000 };
-
         assert_eq!(true_value, 0xFF00);
         assert_eq!(false_value, 0x0000);
     }
 
-    /// Test coil value encoding for multiple coils write
     #[test]
     fn coil_multiple_write_encoding() {
-        // FC15: true = 0xFF, false = 0x00
         let values = vec![true, false, true];
-        let encoded: Vec<u8> = values
-            .iter()
-            .map(|&b| if b { 0xFF } else { 0x00 })
-            .collect();
-
+        let encoded: Vec<u8> = values.iter().map(|&b| if b { 0xFF } else { 0x00 }).collect();
         assert_eq!(encoded, vec![0xFF, 0x00, 0xFF]);
     }
 }

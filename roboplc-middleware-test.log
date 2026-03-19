@@ -1,0 +1,203 @@
+[2m2026-03-19T02:34:41.490844Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::worker[0m[2m:[0m RPC Server Worker started, main loop running
+[2m2026-03-19T02:34:41.495339Z[0m [32m INFO[0m [2mroboplc_middleware::workers::manager[0m[2m:[0m Device Manager started, managing 1 devices
+[2m2026-03-19T02:34:41.495373Z[0m [32m INFO[0m [2mroboplc_middleware::workers::manager[0m[2m:[0m Registered device: Test-Dobot
+[2m2026-03-19T02:34:41.499984Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::worker[0m[2m:[0m ModbusWorker started [3mdevice_id[0m[2m=[0mTest-Dobot
+[2m2026-03-19T02:34:41.501188Z[0m [32m INFO[0m [2mroboplc_middleware::workers::heartbeat_worker[0m[2m:[0m HeartbeatWorker started [3mdevices_count[0m[2m=[0m1 [3mheartbeat_interval_sec[0m[2m=[0m30 [3mcheck_interval_ms[0m[2m=[0m30000
+[2m2026-03-19T02:34:41.504456Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 24 workers
+[2m2026-03-19T02:34:41.504495Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Tokio runtime found; starting in existing Tokio runtime
+[2m2026-03-19T02:34:41.504499Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-0.0.0.0:8081", workers: 24, listening on: 0.0.0.0:8081
+[2m2026-03-19T02:34:41.506211Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::state[0m[2m:[0m Connected to Modbus device [3mdevice_id[0m[2m=[0mTest-Dobot
+[2m2026-03-19T02:34:41.515686Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m RPC Server started on 0.0.0.0:8080
+[2m2026-03-19T02:34:51.106942Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46079, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46079
+[2m2026-03-19T02:34:51.151082Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 43.441 ms (43441 μs)
+[2m2026-03-19T02:34:51.155547Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.415 ms (4415 μs)
+[2m2026-03-19T02:34:51.338231Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46081, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46081
+[2m2026-03-19T02:34:51.374184Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 35.371 ms (35371 μs)
+[2m2026-03-19T02:34:51.379649Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.408 ms (5408 μs)
+[2m2026-03-19T02:34:51.893938Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46083, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46083
+[2m2026-03-19T02:34:51.901791Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.215 ms (7215 μs)
+[2m2026-03-19T02:34:51.963705Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 61.801 ms (61801 μs)
+[2m2026-03-19T02:34:53.189250Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46849, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46849
+[2m2026-03-19T02:34:53.220449Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 30.403 ms (30403 μs)
+[2m2026-03-19T02:34:53.226250Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.681 ms (5681 μs)
+[2m2026-03-19T02:34:53.891123Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46853, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46853
+[2m2026-03-19T02:34:53.930891Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 39.055 ms (39055 μs)
+[2m2026-03-19T02:34:53.938119Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.163 ms (7163 μs)
+[2m2026-03-19T02:34:55.196754Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46863, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46863
+[2m2026-03-19T02:34:55.271471Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 74.115 ms (74115 μs)
+[2m2026-03-19T02:34:55.389583Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 118.011 ms (118011 μs)
+[2m2026-03-19T02:34:55.881002Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46875, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46875
+[2m2026-03-19T02:34:55.894653Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 13.064 ms (13064 μs)
+[2m2026-03-19T02:34:55.901739Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.040 ms (7040 μs)
+[2m2026-03-19T02:34:57.205506Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46883, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46883
+[2m2026-03-19T02:34:57.247712Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 41.300 ms (41300 μs)
+[2m2026-03-19T02:34:57.328202Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 80.388 ms (80388 μs)
+[2m2026-03-19T02:34:57.892045Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46885, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46885
+[2m2026-03-19T02:34:57.928186Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 35.685 ms (35685 μs)
+[2m2026-03-19T02:34:57.982174Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 53.919 ms (53919 μs)
+[2m2026-03-19T02:34:59.132104Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46891, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46891
+[2m2026-03-19T02:34:59.191233Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 58.533 ms (58533 μs)
+[2m2026-03-19T02:34:59.196234Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.890 ms (4890 μs)
+[2m2026-03-19T02:34:59.889861Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46897, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46897
+[2m2026-03-19T02:34:59.927659Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 37.404 ms (37404 μs)
+[2m2026-03-19T02:34:59.933091Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.378 ms (5378 μs)
+[2m2026-03-19T02:35:01.194779Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46907, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46907
+[2m2026-03-19T02:35:01.220576Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 25.202 ms (25202 μs)
+[2m2026-03-19T02:35:01.241502Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 20.786 ms (20786 μs)
+[2m2026-03-19T02:35:01.883972Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46919, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46919
+[2m2026-03-19T02:35:01.942991Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 58.587 ms (58587 μs)
+[2m2026-03-19T02:35:01.950698Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.598 ms (7598 μs)
+[2m2026-03-19T02:35:03.193415Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48511, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:48511
+[2m2026-03-19T02:35:03.201938Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.747 ms (7747 μs)
+[2m2026-03-19T02:35:03.216899Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 14.844 ms (14844 μs)
+[2m2026-03-19T02:35:03.897200Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48519, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:48519
+[2m2026-03-19T02:35:03.912833Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 15.053 ms (15053 μs)
+[2m2026-03-19T02:35:03.916872Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 3.947 ms (3947 μs)
+[2m2026-03-19T02:35:05.379691Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48521, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:48521
+[2m2026-03-19T02:35:05.435197Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 54.804 ms (54804 μs)
+[2m2026-03-19T02:35:05.439796Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.504 ms (4504 μs)
+[2m2026-03-19T02:35:06.082820Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48533, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:48533
+[2m2026-03-19T02:35:06.089027Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.448 ms (5448 μs)
+[2m2026-03-19T02:35:06.093916Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.852 ms (4852 μs)
+[2m2026-03-19T02:35:07.409601Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48549, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:48549
+[2m2026-03-19T02:35:07.501242Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 91.134 ms (91134 μs)
+[2m2026-03-19T02:35:07.506374Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.082 ms (5082 μs)
+[2m2026-03-19T02:35:08.081824Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48555, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:48555
+[2m2026-03-19T02:35:08.093645Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 11.189 ms (11189 μs)
+[2m2026-03-19T02:35:08.098609Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.847 ms (4847 μs)
+[2m2026-03-19T02:35:09.422855Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48567, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:48567
+[2m2026-03-19T02:35:09.474851Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 51.288 ms (51288 μs)
+[2m2026-03-19T02:35:09.480815Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.802 ms (5802 μs)
+[2m2026-03-19T02:35:10.081369Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48575, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:48575
+[2m2026-03-19T02:35:10.095967Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 13.975 ms (13975 μs)
+[2m2026-03-19T02:35:10.100563Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.500 ms (4500 μs)
+[2m2026-03-19T02:35:11.376645Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48581, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:48581
+[2m2026-03-19T02:35:11.421309Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 43.944 ms (43944 μs)
+[2m2026-03-19T02:35:11.426623Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.241 ms (5241 μs)
+[2m2026-03-19T02:35:12.085723Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:48595, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:48595
+[2m2026-03-19T02:35:12.136978Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 50.660 ms (50660 μs)
+[2m2026-03-19T02:35:12.224096Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 87.051 ms (87051 μs)
+[2m2026-03-19T02:35:13.395125Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46989, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46989
+[2m2026-03-19T02:35:13.400856Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.329 ms (5329 μs)
+[2m2026-03-19T02:35:13.406188Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.268 ms (5268 μs)
+[2m2026-03-19T02:35:14.076319Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46997, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46997
+[2m2026-03-19T02:35:14.096743Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 19.150 ms (19150 μs)
+[2m2026-03-19T02:35:14.102320Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.469 ms (5469 μs)
+[2m2026-03-19T02:35:15.391289Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47013, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:47013
+[2m2026-03-19T02:35:15.409843Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 18.277 ms (18277 μs)
+[2m2026-03-19T02:35:15.414699Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.801 ms (4801 μs)
+[2m2026-03-19T02:35:16.077424Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47025, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:47025
+[2m2026-03-19T02:35:16.113936Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 35.914 ms (35914 μs)
+[2m2026-03-19T02:35:16.119837Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.836 ms (5836 μs)
+[2m2026-03-19T02:35:17.389446Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47039, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:47039
+[2m2026-03-19T02:35:17.481099Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 90.976 ms (90976 μs)
+[2m2026-03-19T02:35:17.487101Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.932 ms (5932 μs)
+[2m2026-03-19T02:35:18.077244Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47051, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:47051
+[2m2026-03-19T02:35:18.082764Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.928 ms (4928 μs)
+[2m2026-03-19T02:35:18.087098Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.256 ms (4256 μs)
+[2m2026-03-19T02:35:19.410459Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47067, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:47067
+[2m2026-03-19T02:35:19.418139Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.208 ms (7208 μs)
+[2m2026-03-19T02:35:19.444347Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 26.125 ms (26125 μs)
+[2m2026-03-19T02:35:20.085125Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47077, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:47077
+[2m2026-03-19T02:35:20.129481Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 43.730 ms (43730 μs)
+[2m2026-03-19T02:35:20.135773Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.233 ms (6233 μs)
+[2m2026-03-19T02:35:21.397769Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47091, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:47091
+[2m2026-03-19T02:35:21.517154Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 119.070 ms (119070 μs)
+[2m2026-03-19T02:35:21.522094Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.836 ms (4836 μs)
+[2m2026-03-19T02:35:22.074436Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:47101, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:47101
+[2m2026-03-19T02:35:22.119733Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 44.664 ms (44664 μs)
+[2m2026-03-19T02:35:22.128022Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 8.189 ms (8189 μs)
+[2m2026-03-19T02:35:23.382977Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46249, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46249
+[2m2026-03-19T02:35:23.424861Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 41.358 ms (41358 μs)
+[2m2026-03-19T02:35:23.431453Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.454 ms (6454 μs)
+[2m2026-03-19T02:35:24.083367Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46259, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46259
+[2m2026-03-19T02:35:24.138663Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 54.863 ms (54863 μs)
+[2m2026-03-19T02:35:24.143608Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.848 ms (4848 μs)
+[2m2026-03-19T02:35:25.389175Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46275, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46275
+[2m2026-03-19T02:35:25.496521Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 106.628 ms (106628 μs)
+[2m2026-03-19T02:35:25.509713Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 13.122 ms (13122 μs)
+[2m2026-03-19T02:35:26.077057Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46285, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46285
+[2m2026-03-19T02:35:26.084920Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.412 ms (7412 μs)
+[2m2026-03-19T02:35:26.090077Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.064 ms (5064 μs)
+[2m2026-03-19T02:35:27.383771Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46301, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46301
+[2m2026-03-19T02:35:27.430114Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 45.629 ms (45629 μs)
+[2m2026-03-19T02:35:27.435092Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.913 ms (4913 μs)
+[2m2026-03-19T02:35:28.072115Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46303, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46303
+[2m2026-03-19T02:35:28.077857Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.011 ms (5011 μs)
+[2m2026-03-19T02:35:28.083108Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.173 ms (5173 μs)
+[2m2026-03-19T02:35:29.410346Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46317, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46317
+[2m2026-03-19T02:35:29.483213Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 72.485 ms (72485 μs)
+[2m2026-03-19T02:35:29.527973Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 44.650 ms (44650 μs)
+[2m2026-03-19T02:35:30.083561Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46327, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46327
+[2m2026-03-19T02:35:30.088911Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.693 ms (4693 μs)
+[2m2026-03-19T02:35:30.093363Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.382 ms (4382 μs)
+[2m2026-03-19T02:35:31.394617Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46341, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46341
+[2m2026-03-19T02:35:31.446258Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 51.128 ms (51128 μs)
+[2m2026-03-19T02:35:31.453352Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.976 ms (6976 μs)
+[2m2026-03-19T02:35:32.070578Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46349, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46349
+[2m2026-03-19T02:35:32.076211Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.926 ms (4926 μs)
+[2m2026-03-19T02:35:32.081104Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.808 ms (4808 μs)
+[2m2026-03-19T02:35:33.392215Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:44939, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:44939
+[2m2026-03-19T02:35:33.398858Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.731 ms (5731 μs)
+[2m2026-03-19T02:35:33.412408Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 13.455 ms (13455 μs)
+[2m2026-03-19T02:35:34.083809Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:44949, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:44949
+[2m2026-03-19T02:35:34.188410Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 104.084 ms (104084 μs)
+[2m2026-03-19T02:35:34.195789Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 7.212 ms (7212 μs)
+[2m2026-03-19T02:35:35.387777Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:44957, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:44957
+[2m2026-03-19T02:35:35.397382Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 9.108 ms (9108 μs)
+[2m2026-03-19T02:35:35.403856Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.355 ms (6355 μs)
+[2m2026-03-19T02:35:36.078233Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:44967, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:44967
+[2m2026-03-19T02:35:36.084573Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.255 ms (5255 μs)
+[2m2026-03-19T02:35:36.089601Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.948 ms (4948 μs)
+[2m2026-03-19T02:35:37.393071Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:44983, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:44983
+[2m2026-03-19T02:35:37.604626Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.917 ms (4917 μs)
+[2m2026-03-19T02:35:37.609325Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.604 ms (4604 μs)
+[2m2026-03-19T02:35:38.073318Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:44997, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:44997
+[2m2026-03-19T02:35:38.080485Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.746 ms (6746 μs)
+[2m2026-03-19T02:35:38.086804Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.246 ms (6246 μs)
+[2m2026-03-19T02:35:39.416539Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:45007, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:45007
+[2m2026-03-19T02:35:39.455335Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 38.016 ms (38016 μs)
+[2m2026-03-19T02:35:39.460720Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.260 ms (5260 μs)
+[2m2026-03-19T02:35:40.076751Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:45009, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:45009
+[2m2026-03-19T02:35:40.237351Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 159.985 ms (159985 μs)
+[2m2026-03-19T02:35:40.242253Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.819 ms (4819 μs)
+[2m2026-03-19T02:35:41.388550Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:45023, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:45023
+[2m2026-03-19T02:35:41.401588Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 12.377 ms (12377 μs)
+[2m2026-03-19T02:35:41.407858Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.171 ms (6171 μs)
+[2m2026-03-19T02:35:42.074684Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:45029, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:45029
+[2m2026-03-19T02:35:42.085171Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 9.799 ms (9799 μs)
+[2m2026-03-19T02:35:42.092199Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 6.950 ms (6950 μs)
+[2m2026-03-19T02:35:43.387300Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46925, fd: 121 } [3maddr[0m[2m=[0m127.0.0.1:46925
+[2m2026-03-19T02:35:43.405636Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 17.390 ms (17390 μs)
+[2m2026-03-19T02:35:43.411410Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.682 ms (5682 μs)
+[2m2026-03-19T02:35:44.074162Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46933, fd: 120 } [3maddr[0m[2m=[0m127.0.0.1:46933
+[2m2026-03-19T02:35:44.080230Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 5.294 ms (5294 μs)
+[2m2026-03-19T02:35:44.085249Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::client[0m[2m:[0m Modbus READ operation completed in 4.926 ms (4926 μs)
+[2m2026-03-19T02:35:44.971590Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m SIGINT received; starting forced shutdown
+[2m2026-03-19T02:35:44.971783Z[0m [32m INFO[0m [2mactix_server::accept[0m[2m:[0m accept thread stopped
+[2m2026-03-19T02:35:44.971789Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.971855Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.971911Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972015Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972066Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972098Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972132Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972134Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972153Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972211Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972281Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972293Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972371Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972462Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972509Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972522Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972601Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972647Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972640Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972647Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:44.972657Z[0m [32m INFO[0m [2mactix_server::worker[0m[2m:[0m shutting down idle worker
+[2m2026-03-19T02:35:45.385526Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Accepted new RPC connection [3mstream[0m[2m=[0mTcpStream { addr: 127.0.0.1:8080, peer: 127.0.0.1:46935, fd: 10 } [3maddr[0m[2m=[0m127.0.0.1:46935
+[2m2026-03-19T02:35:45.386127Z[0m [32m INFO[0m [2mroboplc_middleware::workers::modbus::worker[0m[2m:[0m ModbusWorker stopped [3mdevice_id[0m[2m=[0mTest-Dobot
+[2m2026-03-19T02:35:45.386423Z[0m [33m WARN[0m [2mroboplc_middleware::workers::rpc::request[0m[2m:[0m Request timed out in bridge [3mcorrelation_id[0m[2m=[0m55
+[2m2026-03-19T02:35:45.506485Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::server[0m[2m:[0m Shutdown signal received, stopping RPC server
+[2m2026-03-19T02:35:45.506479Z[0m [32m INFO[0m [2mroboplc_middleware::workers::rpc::worker[0m[2m:[0m RPC Server Worker stopped

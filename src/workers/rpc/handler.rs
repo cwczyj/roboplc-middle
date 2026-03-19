@@ -10,6 +10,7 @@ use roboplc::prelude::Hub;
 use serde_json::Value as JsonValue;
 
 use std::net::SocketAddr;
+use std::time::{Duration, SystemTime};
 
 use tokio::sync::mpsc;
 
@@ -68,7 +69,18 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
         method: Self::Method,
         _source: Self::Source,
     ) -> RpcResult<Self::Result> {
-        match method {
+        let start_time = SystemTime::now();
+        
+        let method_name = match &method {
+            RpcMethod::Ping { .. } => "ping",
+            RpcMethod::GetVersion { .. } => "get_version",
+            RpcMethod::GetDeviceList { .. } => "get_device_list",
+            RpcMethod::GetStatus { .. } => "get_status",
+            RpcMethod::ReadSignalGroup { .. } => "read_signal_group",
+            RpcMethod::WriteSignalGroup { .. } => "write_signal_group",
+        };
+        
+        let result = match method {
             RpcMethod::Ping {} => Ok(RpcResultType::Success { success: true }),
             RpcMethod::GetVersion {} => Ok(RpcResultType::Version {
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -94,7 +106,14 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
                 let params = serde_json::json!({ "group_name": group_name, "data": data });
                 self.send_device_control(device_id, Operation::WriteSignalGroup, params)
             }
-        }
+        };
+        
+        // Calculate and log total RPC handling time
+        let elapsed = start_time.elapsed().unwrap_or(Duration::ZERO);
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        tracing::info!("RPC {} completed in {:.3} ms", method_name, elapsed_ms);
+        
+        result
     }
 }
 

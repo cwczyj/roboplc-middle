@@ -40,7 +40,7 @@ use roboplc_middleware::{
 };
 use std::path::Path;
 use tracing_appender::rolling;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, EnvFilter, fmt::writer::MakeWriterExt};
 
 /// 程序主入口
 ///
@@ -72,7 +72,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if config.logging.file.is_empty() {
             // 如果没有配置日志文件，只输出到控制台
             let filter = EnvFilter::new(&config.logging.level);
-            fmt().with_env_filter(filter).init();
+            fmt()
+                .with_env_filter(filter)
+                .with_target(true)
+                .with_thread_ids(false)
+                .with_file(false)
+                .with_line_number(false)
+                .with_level(true)
+                .init();
             None
         } else {
             // 配置文件日志输出
@@ -90,8 +97,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // 初始化日志订阅器，同时输出到文件和控制台
             let filter = EnvFilter::new(&config.logging.level);
             fmt()
-                .with_writer(non_blocking)
+                .with_writer(non_blocking.and(std::io::stderr))
                 .with_env_filter(filter)
+                .with_target(true)
+                .with_thread_ids(false)
+                .with_file(false)
+                .with_line_number(false)
+                .with_level(true)
                 .init();
             eprintln!("Logging to file: {}", config.logging.file);
             Some(guard) // 保持 guard 存活到 main 结束
