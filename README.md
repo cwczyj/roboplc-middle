@@ -165,18 +165,155 @@ offset = 2
 
 ## Build
 
+### Development Build
+
+```bash
+cargo build
+```
+
+### Production Build (Release)
+
 ```bash
 cargo build --release
 ```
 
+The release binary will be at `target/release/roboplc-middleware`.
+
 ## Run
 
-```bash
-# Production mode
-cargo run --release
+### Development Mode
 
-# Development mode (skips RT scheduling)
+Development mode skips real-time scheduling requirements, no root privilege needed:
+
+```bash
 ROBOPLC_SIMULATED=1 cargo run
+```
+
+Or run the release binary:
+
+```bash
+ROBOPLC_SIMULATED=1 ./target/release/roboplc-middleware
+```
+
+### Production Mode
+
+Production mode enables real-time FIFO scheduling for deterministic latency. **Root privilege is required**:
+
+```bash
+# Run with real-time scheduling (requires root)
+sudo ./target/release/roboplc-middleware
+```
+
+### Configuration File
+
+The middleware reads `config.toml` from the current working directory. You can:
+
+```bash
+# Option 1: Run from directory containing config.toml
+cd /path/to/config/directory
+sudo /path/to/roboplc-middleware
+
+# Option 2: Create symlink
+sudo ln -s /etc/roboplc/config.toml config.toml
+sudo ./target/release/roboplc-middleware
+```
+
+## Production Deployment
+
+### System Requirements
+
+| Requirement | Minimum | Recommended |
+|-------------|---------|-------------|
+| OS | Linux (kernel 3.0+) | Linux (kernel 5.0+) |
+| CPU | 2 cores | 4+ cores |
+| Memory | 512 MB | 1 GB |
+| Privileges | - | root (for RT scheduling) |
+
+### Performance Tuning
+
+The middleware is optimized for high-frequency multi-client access:
+
+| Parameter | Location | Description |
+|-----------|----------|-------------|
+| `max_blocking_threads` | worker.rs | Concurrent request capacity (default: 128) |
+| `mpsc channel capacity` | worker.rs | Request queue size (default: 5000) |
+| `max_concurrent_ops` | config.toml | Per-device concurrent operations (default: 3) |
+
+### Adjusting Concurrency
+
+**Per-device concurrency** - in `config.toml`:
+
+```toml
+[[devices]]
+id = "robot-arm-1"
+# ... other settings ...
+max_concurrent_ops = 5  # Allow 5 concurrent operations to this device
+```
+
+**Global request capacity** - rebuild after modifying `src/workers/rpc/worker.rs`:
+
+```rust
+.max_blocking_threads(128)  // Supports 64+ concurrent requests
+let (tx, rx) = mpsc::channel::<DeviceControlRequest>(5000);  // Request queue
+```
+
+### Running as systemd Service
+
+Create `/etc/systemd/system/roboplc-middleware.service`:
+
+```ini
+[Unit]
+Description=RoboPLC Middleware
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/roboplc
+ExecStart=/opt/roboplc/roboplc-middleware
+Restart=always
+RestartSec=5
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable roboplc-middleware
+sudo systemctl start roboplc-middleware
+sudo systemctl status roboplc-middleware
+```
+
+### High-Frequency Access Support
+
+The middleware supports multiple TCP clients accessing at ~50ms frequency:
+
+- **Blocking thread pool**: 128 threads (supports 64+ concurrent requests)
+- **Channel capacity**: 5000 queued requests
+- **Per-device concurrency**: Configurable via `max_concurrent_ops`
+- **Non-blocking queue**: Returns error immediately when at capacity
+
+### Monitoring
+
+Check logs:
+
+```bash
+# If using systemd
+sudo journalctl -u roboplc-middleware -f
+
+# Or check configured log file
+tail -f /var/log/roboplc-middleware.log
+```
+
+Health check:
+
+```bash
+curl http://localhost:8081/api/health
 ```
 
 ## API Endpoints
