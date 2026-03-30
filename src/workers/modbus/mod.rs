@@ -19,10 +19,13 @@ pub mod state;
 pub mod types;
 pub mod worker;
 
-pub use client::{ModbusClient, ModbusOp, OperationResult};
+pub use client::{ModbusClient, ModbusConnectionPool, ModbusOp, OperationResult};
 pub use handler::DeviceControlHandler;
 pub use operations::{parse_register_address, register_type_from_kind, RegisterType};
-pub use parsing::{encode_fields_for_partial_write, encode_fields_to_registers, encode_single_field, parse_signal_group_fields, EncodedField, ParsedField};
+pub use parsing::{
+    encode_fields_for_partial_write, encode_fields_to_registers, encode_single_field,
+    parse_signal_group_fields, EncodedField, ParsedField,
+};
 pub use state::ModbusWorkerState;
 pub use types::{Backoff, ConnectionState, OperationQueue, TimeoutHandler, TransactionId};
 pub use worker::ModbusWorker;

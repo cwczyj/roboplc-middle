@@ -86,7 +86,7 @@ impl LatencyStats {
 
 /// 延迟监控Worker
 #[derive(WorkerOpts)]
-#[worker_opts(name = "latency_monitor")]
+#[worker_opts(name = "latency_monitor", cpu = 3, scheduling = "fifo", priority = 60)]
 pub struct LatencyMonitor {
     latency_stats: HashMap<String, LatencyStats>,
 }

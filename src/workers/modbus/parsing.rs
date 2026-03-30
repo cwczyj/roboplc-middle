@@ -26,7 +26,7 @@ pub struct ParsedField {
 }
 
 /// Encoded field value for Modbus write
-/// 
+///
 /// Represents a single field's encoded register values with its offset,
 /// enabling per-field write operations.
 #[derive(Debug, Clone, PartialEq)]
@@ -67,12 +67,11 @@ pub fn encode_single_field(
     let value = field_value.as_f64()?;
 
     // Convert value to bytes using DataTypeConverter
-    let bytes =
-        <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
-            value,
-            field.data_type.clone(),
-            byte_order,
-        )?;
+    let bytes = <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+        value,
+        field.data_type.clone(),
+        byte_order,
+    )?;
 
     // Convert bytes to registers
     let registers = bytes_to_registers(&bytes);
@@ -107,19 +106,15 @@ pub fn encode_fields_for_partial_write(
     let mut results = Vec::with_capacity(fields_data.len());
 
     for (field_name, field_value) in fields_data {
-        if let Some(encoded) = encode_single_field(
-            field_name,
-            field_value,
-            field_mappings,
-            byte_order.clone(),
-        ) {
+        if let Some(encoded) =
+            encode_single_field(field_name, field_value, field_mappings, byte_order.clone())
+        {
             results.push(encoded);
         }
     }
 
     results
 }
-
 
 /// Parse SignalGroup fields from register values
 ///
@@ -643,7 +638,12 @@ mod tests {
     #[test]
     fn encode_single_field_u16() {
         let fields = vec![make_field("speed", DataType::U16, 0)];
-        let result = encode_single_field("speed", &serde_json::json!(1500), &fields, ByteOrder::BigEndian);
+        let result = encode_single_field(
+            "speed",
+            &serde_json::json!(1500),
+            &fields,
+            ByteOrder::BigEndian,
+        );
 
         assert!(result.is_some());
         let encoded = result.unwrap();
@@ -655,7 +655,12 @@ mod tests {
     #[test]
     fn encode_single_field_f32() {
         let fields = vec![make_field("temperature", DataType::F32, 2)];
-        let result = encode_single_field("temperature", &serde_json::json!(25.5), &fields, ByteOrder::BigEndian);
+        let result = encode_single_field(
+            "temperature",
+            &serde_json::json!(25.5),
+            &fields,
+            ByteOrder::BigEndian,
+        );
 
         assert!(result.is_some());
         let encoded = result.unwrap();
@@ -667,7 +672,12 @@ mod tests {
     #[test]
     fn encode_single_field_unknown_returns_none() {
         let fields = vec![make_field("speed", DataType::U16, 0)];
-        let result = encode_single_field("unknown", &serde_json::json!(100), &fields, ByteOrder::BigEndian);
+        let result = encode_single_field(
+            "unknown",
+            &serde_json::json!(100),
+            &fields,
+            ByteOrder::BigEndian,
+        );
 
         assert!(result.is_none());
     }

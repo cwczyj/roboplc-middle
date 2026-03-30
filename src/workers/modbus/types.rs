@@ -53,7 +53,6 @@ pub struct Backoff {
 }
 
 impl Backoff {
-
     pub fn new() -> Self {
         Self {
             attempts: 0,
@@ -121,6 +120,7 @@ pub struct OperationQueue<T> {
 }
 
 impl<T> OperationQueue<T> {
+    /// Creates a new operation queue with the specified maximum concurrent operations.
     pub fn new(max_in_flight: usize) -> Self {
         Self {
             pending: VecDeque::new(),
@@ -128,17 +128,16 @@ impl<T> OperationQueue<T> {
             max_in_flight,
         }
     }
-}
-#[cfg(test)]
-impl<T> OperationQueue<T> {
-    fn push(&mut self, op: T) {
+
+    /// Adds an operation to the pending queue.
+    pub fn push(&mut self, op: T) {
         self.pending.push_back(op);
     }
-    fn can_start(&self) -> bool {
-        self.in_flight < self.max_in_flight
-    }
-    fn start_next(&mut self) -> Option<T> {
-        if self.can_start() {
+
+    /// Attempts to pop an operation from the queue if capacity is available.
+    /// Returns `Some(op)` if an operation was started, `None` if at capacity or queue empty.
+    pub fn pop_if_ready(&mut self) -> Option<T> {
+        if self.in_flight < self.max_in_flight {
             if let Some(op) = self.pending.pop_front() {
                 self.in_flight += 1;
                 return Some(op);
@@ -146,10 +145,18 @@ impl<T> OperationQueue<T> {
         }
         None
     }
-    fn complete(&mut self) {
-        if self.in_flight > 0 {
-            self.in_flight -= 1;
-        }
+
+    /// Marks an operation as complete, releasing capacity for the next operation.
+    /// Saturates at zero (safe to call when no operations are in flight).
+    pub fn complete(&mut self) {
+        self.in_flight = self.in_flight.saturating_sub(1);
+    }
+}
+
+#[cfg(test)]
+impl<T> OperationQueue<T> {
+    fn can_start(&self) -> bool {
+        self.in_flight < self.max_in_flight
     }
     fn pending_count(&self) -> usize {
         self.pending.len()
@@ -238,9 +245,9 @@ mod tests {
         assert_eq!(queue.in_flight_count(), 0);
         assert!(queue.can_start());
 
-        let op1 = queue.start_next();
-        let op2 = queue.start_next();
-        let op3 = queue.start_next();
+        let op1 = queue.pop_if_ready();
+        let op2 = queue.pop_if_ready();
+        let op3 = queue.pop_if_ready();
 
         assert!(op1.is_some());
         assert!(op2.is_some());
@@ -256,8 +263,8 @@ mod tests {
         queue.push(TestOperation { id: 1, data: 100 });
         queue.push(TestOperation { id: 2, data: 200 });
 
-        let first = queue.start_next();
-        let blocked = queue.start_next();
+        let first = queue.pop_if_ready();
+        let blocked = queue.pop_if_ready();
 
         assert!(first.is_some());
         assert!(blocked.is_none());
@@ -265,7 +272,7 @@ mod tests {
         assert_eq!(queue.pending_count(), 1);
 
         queue.complete();
-        let second = queue.start_next();
+        let second = queue.pop_if_ready();
 
         assert!(second.is_some());
         assert_eq!(queue.in_flight_count(), 1);
@@ -280,11 +287,73 @@ mod tests {
         assert_eq!(queue.in_flight_count(), 0);
 
         queue.push(TestOperation { id: 1, data: 100 });
-        let _ = queue.start_next();
+        let _ = queue.pop_if_ready();
         assert_eq!(queue.in_flight_count(), 1);
 
         queue.complete();
         queue.complete();
         assert_eq!(queue.in_flight_count(), 0);
+    }
+
+    #[test]
+    fn operation_queue_pop_if_ready_returns_none_on_empty_queue() {
+        let mut queue: OperationQueue<TestOperation> = OperationQueue::new(2);
+        let result = queue.pop_if_ready();
+        assert!(result.is_none());
+        assert_eq!(queue.in_flight_count(), 0);
+    }
+
+    #[test]
+    fn operation_queue_maintains_fifo_order() {
+        let mut queue = OperationQueue::new(3);
+        queue.push(TestOperation { id: 1, data: 100 });
+        queue.push(TestOperation { id: 2, data: 200 });
+        queue.push(TestOperation { id: 3, data: 300 });
+
+        let op1 = queue.pop_if_ready();
+        let op2 = queue.pop_if_ready();
+        let op3 = queue.pop_if_ready();
+
+        assert_eq!(op1.unwrap().id, 1);
+        assert_eq!(op2.unwrap().id, 2);
+        assert_eq!(op3.unwrap().id, 3);
+    }
+
+    #[test]
+    fn operation_queue_new_with_zero_capacity() {
+        let mut queue: OperationQueue<TestOperation> = OperationQueue::new(0);
+        queue.push(TestOperation { id: 1, data: 100 });
+
+        let result = queue.pop_if_ready();
+        assert!(result.is_none());
+        assert_eq!(queue.pending_count(), 1);
+    }
+
+    #[test]
+    fn operation_queue_full_cycle() {
+        let mut queue = OperationQueue::new(2);
+        queue.push(TestOperation { id: 1, data: 100 });
+        queue.push(TestOperation { id: 2, data: 200 });
+        queue.push(TestOperation { id: 3, data: 300 });
+        queue.push(TestOperation { id: 4, data: 400 });
+
+        let op1 = queue.pop_if_ready();
+        let op2 = queue.pop_if_ready();
+        assert_eq!(op1.unwrap().id, 1);
+        assert_eq!(op2.unwrap().id, 2);
+
+        queue.complete();
+        let op3 = queue.pop_if_ready();
+        assert_eq!(op3.unwrap().id, 3);
+
+        queue.complete();
+        queue.complete();
+        let op4 = queue.pop_if_ready();
+        assert_eq!(op4.unwrap().id, 4);
+
+        queue.complete();
+        queue.complete();
+        assert_eq!(queue.in_flight_count(), 0);
+        assert_eq!(queue.pending_count(), 0);
     }
 }

@@ -1,7 +1,9 @@
 // =============================================================================
-// RPC Worker - 超时请求清理
+// RPC Worker - 超时请求清理 (Wave 3 重构后保留)
 // =============================================================================
-// 这个模块处理超时请求的清理逻辑
+// Wave 3 重构后，此模块不再在生产代码中使用:
+// - 请求在同一 blocking thread 中完成，无需 pending 超时清理
+// - 保留此文件仅供向后兼容和测试使用
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -14,12 +16,15 @@ use crate::messages::Message;
 
 use super::types::PendingRequest;
 
-/// Cleanup timed-out requests
+#[deprecated(
+    since = "0.3.0",
+    note = "No longer needed - requests complete in single blocking thread"
+)]
 pub fn cleanup_timed_out_requests(
     pending: Arc<Mutex<HashMap<u64, PendingRequest>>>,
     hub: Hub<Message>,
 ) {
-    let timeout_duration = Duration::from_secs(35); // Slightly longer than request timeout
+    let timeout_duration = Duration::from_secs(35);
 
     let mut pending_lock = pending.lock().unwrap();
     let now = Instant::now();
@@ -32,14 +37,12 @@ pub fn cleanup_timed_out_requests(
 
     for id in timed_out {
         if let Some(req) = pending_lock.remove(&id) {
-            // Send error response
             let _ = req.respond_to.send((
                 false,
                 serde_json::json!({}),
                 Some("Request timed out during cleanup".to_string()),
             ));
 
-            // Notify Hub about timeout
             hub.send(Message::TimeoutCleanup { correlation_id: id });
             tracing::warn!(correlation_id = id, "Cleaned up timed-out request");
         }

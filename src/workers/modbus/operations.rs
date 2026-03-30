@@ -221,7 +221,6 @@ mod tests {
 
     #[test]
     fn register_type_to_modbus_register_kind() {
-
         use roboplc::io::modbus::prelude::ModbusRegisterKind;
 
         assert_eq!(

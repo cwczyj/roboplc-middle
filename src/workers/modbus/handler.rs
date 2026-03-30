@@ -7,8 +7,8 @@ use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 
 use super::{
-    encode_fields_to_registers, parse_register_address,
-    parse_signal_group_fields, ConnectionState, ModbusOp, RegisterType,
+    encode_fields_to_registers, parse_register_address, parse_signal_group_fields, ConnectionState,
+    ModbusOp, RegisterType,
 };
 use crate::workers::modbus::state::ModbusWorkerState;
 
@@ -57,11 +57,7 @@ impl DeviceControlHandler {
     }
 
     /// Create ModbusOp for writing registers/coils
-    fn create_write_op(
-        reg_type: RegisterType,
-        address: u16,
-        registers: &[u16],
-    ) -> ModbusOp {
+    fn create_write_op(reg_type: RegisterType, address: u16, registers: &[u16]) -> ModbusOp {
         match reg_type {
             RegisterType::Coil => {
                 let values: Vec<bool> = registers.iter().map(|&v| v != 0).collect();
@@ -239,16 +235,38 @@ impl DeviceControlHandler {
                 send_response(true, status, None);
             }
             Operation::ReadSignalGroup => {
+                if !self.state.try_acquire_operation() {
+                    send_response(
+                        false,
+                        JsonValue::Null,
+                        Some("Too many concurrent operations".to_string()),
+                    );
+                    return;
+                }
                 self.handle_read_signal_group(&params, send_response, context);
+                self.state.complete_operation();
             }
             Operation::WriteSignalGroup => {
+                if !self.state.try_acquire_operation() {
+                    send_response(
+                        false,
+                        JsonValue::Null,
+                        Some("Too many concurrent operations".to_string()),
+                    );
+                    return;
+                }
                 self.handle_write_signal_group(&params, send_response, context);
+                self.state.complete_operation();
             }
         }
     }
 
-    fn handle_read_signal_group<F>(&mut self, params: &JsonValue, mut send_response: F, context: &Context<Message, Variables>)
-    where
+    fn handle_read_signal_group<F>(
+        &mut self,
+        params: &JsonValue,
+        mut send_response: F,
+        context: &Context<Message, Variables>,
+    ) where
         F: FnMut(bool, JsonValue, Option<String>),
     {
         let group_name = params
@@ -316,8 +334,12 @@ impl DeviceControlHandler {
         }
     }
 
-    fn handle_write_signal_group<F>(&mut self, params: &JsonValue, mut send_response: F, context: &Context<Message, Variables>)
-    where
+    fn handle_write_signal_group<F>(
+        &mut self,
+        params: &JsonValue,
+        mut send_response: F,
+        context: &Context<Message, Variables>,
+    ) where
         F: FnMut(bool, JsonValue, Option<String>),
     {
         let group_name = params
@@ -326,16 +348,14 @@ impl DeviceControlHandler {
             .unwrap_or("");
 
         // Clone group data to avoid borrow conflicts
-        let group_data = self
-            .resolve_signal_group(group_name)
-            .map(|g| {
-                (
-                    g.name.clone(),
-                    g.register_address.clone(),
-                    g.register_count,
-                    g.fields.clone(),
-                )
-            });
+        let group_data = self.resolve_signal_group(group_name).map(|g| {
+            (
+                g.name.clone(),
+                g.register_address.clone(),
+                g.register_count,
+                g.fields.clone(),
+            )
+        });
 
         let Some((name, register_address, register_count, fields)) = group_data else {
             send_response(
@@ -414,7 +434,8 @@ impl DeviceControlHandler {
             fields_data,
             fields,
             // Calculate total register count from fields
-            fields.iter()
+            fields
+                .iter()
                 .map(|f| f.offset as u16 + f.data_type.required_registers() as u16)
                 .max()
                 .unwrap_or(1),
@@ -546,16 +567,16 @@ mod tests {
     #[test]
     fn validate_field_completeness_all_fields_provided() {
         let handler = DeviceControlHandler::new(create_test_device());
-        
+
         let mut provided = serde_json::Map::new();
         provided.insert("field1".to_string(), serde_json::json!(100));
         provided.insert("field2".to_string(), serde_json::json!(200));
-        
+
         let required = vec![
             make_field("field1", DataType::U16, 0),
             make_field("field2", DataType::U16, 1),
         ];
-        
+
         let result = handler.validate_field_completeness(&provided, &required);
         assert!(result.is_ok());
     }
@@ -563,17 +584,17 @@ mod tests {
     #[test]
     fn validate_field_completeness_missing_fields() {
         let handler = DeviceControlHandler::new(create_test_device());
-        
+
         let mut provided = serde_json::Map::new();
         provided.insert("field1".to_string(), serde_json::json!(100));
         // Missing field2
-        
+
         let required = vec![
             make_field("field1", DataType::U16, 0),
             make_field("field2", DataType::U16, 1),
             make_field("field3", DataType::U16, 2),
         ];
-        
+
         let result = handler.validate_field_completeness(&provided, &required);
         assert!(result.is_err());
         let missing = result.unwrap_err();
@@ -585,14 +606,14 @@ mod tests {
     #[test]
     fn validate_field_completeness_empty_provided() {
         let handler = DeviceControlHandler::new(create_test_device());
-        
+
         let provided = serde_json::Map::new();
-        
+
         let required = vec![
             make_field("field1", DataType::U16, 0),
             make_field("field2", DataType::U16, 1),
         ];
-        
+
         let result = handler.validate_field_completeness(&provided, &required);
         assert!(result.is_err());
         let missing = result.unwrap_err();
@@ -602,12 +623,12 @@ mod tests {
     #[test]
     fn validate_field_completeness_no_required_fields() {
         let handler = DeviceControlHandler::new(create_test_device());
-        
+
         let mut provided = serde_json::Map::new();
         provided.insert("field1".to_string(), serde_json::json!(100));
-        
+
         let required: Vec<FieldMapping> = vec![];
-        
+
         let result = handler.validate_field_completeness(&provided, &required);
         assert!(result.is_ok());
     }

@@ -92,3 +92,73 @@ offset = 16
 name = "rz"
 data_type = "f64"
 offset = 20
+
+#### 实际关节数据 #####
+[[devices.signal_groups]]
+name = "real_time_joint_position"
+description = "实时位置和欧拉角"
+register_address = "i1216" # 输入寄存器
+register_count = 24
+
+[[devices.signal_groups.fields]]
+name = "J1"
+data_type = "f64"
+offset = 0
+
+[[devices.signal_groups.fields]]
+name = "J2"
+data_type = "f64"
+offset = 4
+
+[[devices.signal_groups.fields]]
+name = "J3"
+data_type = "f64"
+offset = 8
+
+[[devices.signal_groups.fields]]
+name = "J4"
+data_type = "f64"
+offset = 12
+
+[[devices.signal_groups.fields]]
+name = "J5"
+data_type = "f64"
+offset = 16
+
+[[devices.signal_groups.fields]]
+name = "J6"
+data_type = "f64"
+offset = 20
+
+[[devices.signal_groups]]
+name = "ready"
+description = "机械臂准备就绪状态"
+register_address = "h3095"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "ready_status"
+data_type = "u16"
+offset = 0
+
+[[devices.signal_groups]]
+name = "start_signal"
+description = "机械臂开始信号"
+register_address = "c0"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "start"
+data_type = "bool"
+offset = 0
+
+[[devices.signal_groups]]
+name = "stop_signal"
+description = "机械臂开始信号"
+register_address = "c1"
+register_count = 1
+
+[[devices.signal_groups.fields]]
+name = "stop"
+data_type = "bool"
+offset = 0

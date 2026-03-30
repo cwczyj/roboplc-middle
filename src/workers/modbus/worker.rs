@@ -9,7 +9,7 @@ use super::handler::DeviceControlHandler;
 
 /// ModbusWorker wrapper with WorkerOpts for RoboPLC scheduling
 #[derive(WorkerOpts)]
-#[worker_opts(name = "modbus_worker", cpu = 1, scheduling = "fifo", priority = 80)]
+#[worker_opts(name = "modbus_worker", scheduling = "fifo", priority = 80)]
 pub struct ModbusWorker {
     handler: DeviceControlHandler,
     device_id: String,
@@ -100,8 +100,18 @@ impl Worker<Message, Variables> for ModbusWorker {
                                 "Parsed new config"
                             );
                             if let Some(new_device_config) = self.find_device_config(&new_config) {
-                                let old_signal_groups: Vec<String> = self.handler.device().signal_groups.iter().map(|g| g.name.clone()).collect();
-                                let new_signal_groups: Vec<String> = new_device_config.signal_groups.iter().map(|g| g.name.clone()).collect();
+                                let old_signal_groups: Vec<String> = self
+                                    .handler
+                                    .device()
+                                    .signal_groups
+                                    .iter()
+                                    .map(|g| g.name.clone())
+                                    .collect();
+                                let new_signal_groups: Vec<String> = new_device_config
+                                    .signal_groups
+                                    .iter()
+                                    .map(|g| g.name.clone())
+                                    .collect();
                                 tracing::info!(
                                     device_id = %self.handler.device().id,
                                     old_signal_groups = ?old_signal_groups,
@@ -144,8 +154,8 @@ impl Worker<Message, Variables> for ModbusWorker {
 mod tests {
     use super::*;
     use crate::config::{DeviceType, SignalGroup};
-    use crate::ConnectionState;
     use crate::workers::modbus::{parse_register_address, RegisterType};
+    use crate::ConnectionState;
 
     fn test_device() -> crate::config::Device {
         crate::config::Device {
@@ -167,17 +177,35 @@ mod tests {
     fn worker_new_initializes_without_client() {
         let worker = ModbusWorker::new(test_device());
 
-        assert_eq!(worker.handler.connection_state(), ConnectionState::Disconnected);
+        assert_eq!(
+            worker.handler.connection_state(),
+            ConnectionState::Disconnected
+        );
     }
 
     #[test]
     fn parse_register_address_handles_prefixes() {
-        assert_eq!(parse_register_address("h100").map(|(_, addr)| addr), Some(100));
-        assert_eq!(parse_register_address("H200").map(|(_, addr)| addr), Some(200));
-        assert_eq!(parse_register_address("i50").map(|(_, addr)| addr), Some(50));
-        assert_eq!(parse_register_address("c10").map(|(_, addr)| addr), Some(10));
+        assert_eq!(
+            parse_register_address("h100").map(|(_, addr)| addr),
+            Some(100)
+        );
+        assert_eq!(
+            parse_register_address("H200").map(|(_, addr)| addr),
+            Some(200)
+        );
+        assert_eq!(
+            parse_register_address("i50").map(|(_, addr)| addr),
+            Some(50)
+        );
+        assert_eq!(
+            parse_register_address("c10").map(|(_, addr)| addr),
+            Some(10)
+        );
         assert_eq!(parse_register_address("d5").map(|(_, addr)| addr), Some(5));
-        assert_eq!(parse_register_address("100").map(|(_, addr)| addr), Some(100));
+        assert_eq!(
+            parse_register_address("100").map(|(_, addr)| addr),
+            Some(100)
+        );
     }
 
     #[test]

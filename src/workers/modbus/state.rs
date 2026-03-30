@@ -6,7 +6,10 @@ use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{Backoff, ConnectionState, ModbusClient, ModbusOp, OperationResult, TimeoutHandler};
+use super::{
+    Backoff, ConnectionState, ModbusClient, ModbusOp, OperationQueue, OperationResult,
+    TimeoutHandler,
+};
 
 /// ModbusWorker state struct
 pub struct ModbusWorkerState {
@@ -16,10 +19,13 @@ pub struct ModbusWorkerState {
     last_communication: Option<SystemTime>,
     backoff: Backoff,
     timeout_handler: TimeoutHandler,
+    /// Operation queue for controlling concurrent operations
+    operation_queue: OperationQueue<()>,
 }
 
 impl ModbusWorkerState {
     pub fn new(device: Device) -> Self {
+        let max_concurrent_ops = device.max_concurrent_ops as usize;
         Self {
             device,
             client: None,
@@ -27,6 +33,7 @@ impl ModbusWorkerState {
             last_communication: None,
             backoff: Backoff::new(),
             timeout_handler: TimeoutHandler::new(),
+            operation_queue: OperationQueue::new(max_concurrent_ops),
         }
     }
 
@@ -154,7 +161,7 @@ impl ModbusWorkerState {
     }
 
     /// Execute operation with connection probe
-    /// 
+    ///
     /// Delegates to ModbusClient's execute_operation which handles:
     /// - Connection probing to detect stale connections
     /// - Automatic reconnection on failure
@@ -182,5 +189,17 @@ impl ModbusWorkerState {
                 error: Some("Client not connected".to_string()),
             }
         }
+    }
+
+    /// Try to acquire capacity for a new operation.
+    /// Returns true if capacity is available, false if at max concurrent ops.
+    pub fn try_acquire_operation(&mut self) -> bool {
+        self.operation_queue.push(());
+        self.operation_queue.pop_if_ready().is_some()
+    }
+
+    /// Mark an operation as complete, releasing capacity.
+    pub fn complete_operation(&mut self) {
+        self.operation_queue.complete();
     }
 }

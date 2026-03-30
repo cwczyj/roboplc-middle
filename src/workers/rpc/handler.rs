@@ -2,20 +2,24 @@
 // RPC Worker - RPC 处理器实现
 // =============================================================================
 // 这个模块实现了 RpcHandler 和 RpcServerHandler trait
+//
+// Wave 3 重构: 合并 spawn_blocking 调用
+// - 移除中间 mpsc 通道 (device_control_tx/rx)
+// - 移除 oneshot 通道
+// - 直接在 send_device_control 中发送到 Hub 并等待响应
+// - 每个请求只占用 1 个 blocking thread (之前是 2 个)
 
-use crate::messages::{Message, Operation};
+use crate::messages::{DeviceResponseData, Message, Operation};
 
 use roboplc::prelude::Hub;
 
 use serde_json::Value as JsonValue;
 
 use std::net::SocketAddr;
+use std::sync::mpsc::channel;
 use std::time::{Duration, SystemTime};
 
-use tokio::sync::mpsc;
-
 use super::types::{RpcMethod, RpcResultType};
-use super::types::DeviceControlRequest;
 
 // 导入 roboplc_rpc 相关类型
 use roboplc_rpc::{server::RpcServerHandler, RpcResult};
@@ -37,21 +41,12 @@ pub fn next_correlation_id() -> u64 {
 #[derive(Clone)]
 pub struct RpcHandler {
     device_ids: Vec<String>,
-    device_control_tx: mpsc::Sender<DeviceControlRequest>,
     hub: Hub<Message>,
 }
 
 impl RpcHandler {
-    pub fn new(
-        device_ids: Vec<String>,
-        device_control_tx: mpsc::Sender<DeviceControlRequest>,
-        hub: Hub<Message>,
-    ) -> Self {
-        Self {
-            device_ids,
-            device_control_tx,
-            hub,
-        }
+    pub fn new(device_ids: Vec<String>, hub: Hub<Message>) -> Self {
+        Self { device_ids, hub }
     }
 }
 
@@ -70,7 +65,7 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
         _source: Self::Source,
     ) -> RpcResult<Self::Result> {
         let start_time = SystemTime::now();
-        
+
         let method_name = match &method {
             RpcMethod::Ping { .. } => "ping",
             RpcMethod::GetVersion { .. } => "get_version",
@@ -79,7 +74,7 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
             RpcMethod::ReadSignalGroup { .. } => "read_signal_group",
             RpcMethod::WriteSignalGroup { .. } => "write_signal_group",
         };
-        
+
         let result = match method {
             RpcMethod::Ping {} => Ok(RpcResultType::Success { success: true }),
             RpcMethod::GetVersion {} => Ok(RpcResultType::Version {
@@ -107,12 +102,12 @@ impl<'a> RpcServerHandler<'a> for RpcHandler {
                 self.send_device_control(device_id, Operation::WriteSignalGroup, params)
             }
         };
-        
+
         // Calculate and log total RPC handling time
         let elapsed = start_time.elapsed().unwrap_or(Duration::ZERO);
         let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
         tracing::info!("RPC {} completed in {:.3} ms", method_name, elapsed_ms);
-        
+
         result
     }
 }
@@ -130,29 +125,28 @@ impl RpcHandler {
     ) -> RpcResult<RpcResultType> {
         let correlation_id = next_correlation_id();
 
-        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        // Create std::sync::mpsc channel for Hub response (Message::DeviceControl uses std channel)
+        let (response_tx, response_rx) = channel::<DeviceResponseData>();
 
-        let request = DeviceControlRequest {
+        // Send Message::DeviceControl to Hub directly
+        let message = Message::DeviceControl {
             device_id: device_id.to_string(),
             operation,
             params,
             correlation_id,
-            respond_to: response_tx,
+            respond_to: Some(response_tx),
         };
 
-        // Use blocking_send to send from sync context to async channel
-        if let Err(error) = self.device_control_tx.blocking_send(request) {
-            tracing::error!(%error, "failed to send DeviceControl request");
-            return Ok(RpcResultType::Error {
-                error: format!("Internal error: {}", error),
-            });
-        }
+        self.hub.send(message);
 
-        // Use blocking_recv to wait for response in sync context
-        match response_rx.blocking_recv() {
+        // Wait for response with timeout (already in blocking context from connection.rs)
+        match response_rx.recv_timeout(Duration::from_secs(5)) {
             Ok((success, data, error)) => {
                 if success {
-                    Ok(RpcResultType::Data { success: true, data })
+                    Ok(RpcResultType::Data {
+                        success: true,
+                        data,
+                    })
                 } else {
                     Ok(RpcResultType::Error {
                         error: error.unwrap_or_else(|| "Unknown error".to_string()),

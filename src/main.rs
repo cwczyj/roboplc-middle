@@ -40,7 +40,7 @@ use roboplc_middleware::{
 };
 use std::path::Path;
 use tracing_appender::rolling;
-use tracing_subscriber::{fmt, EnvFilter, fmt::writer::MakeWriterExt};
+use tracing_subscriber::{fmt, fmt::writer::MakeWriterExt, EnvFilter};
 
 /// 程序主入口
 ///
@@ -60,7 +60,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 设置模拟模式，跳过实时调度要求
     // 在生产环境中，移除此行以使用实时调度
-    roboplc::set_simulated();
+    // 注意：实时调度需要 root 权限和正确的系统配置
+    // roboplc::set_simulated();
 
     // 加载配置文件
     let config_path = "config.toml";

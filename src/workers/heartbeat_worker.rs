@@ -19,7 +19,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// 通过发送 GetStatus 请求来检测设备是否在线，
 /// 复用 ModbusWorker 已建立的连接。
 #[derive(WorkerOpts)]
-#[worker_opts(name = "heartbeat", blocking = true)]
+#[worker_opts(name = "heartbeat", cpu = 2, scheduling = "fifo", priority = 70)]
 pub struct HeartbeatWorker {
     config: Config,
     /// 下一个心跳检查的设备索引（轮询）
