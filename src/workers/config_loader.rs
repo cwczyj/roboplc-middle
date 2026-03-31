@@ -3,11 +3,15 @@ use crate::{
     hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT},
     Message, Variables,
 };
-use notify::{RecursiveMode, Watcher};
+use notify::{Event, RecursiveMode, Watcher};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::mpsc::{Receiver, SyncSender};
+
+/// Buffer size for config file events - prevents unbounded memory growth
+const CONFIG_EVENT_BUFFER_SIZE: usize = 100;
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "config_loader", blocking = true)]
@@ -84,12 +88,34 @@ impl ConfigLoader {
 
 impl Worker<Message, Variables> for ConfigLoader {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut watcher = notify::recommended_watcher(tx)?;
+        // Create bounded channel for config events to prevent memory exhaustion
+        let (bounded_tx, bounded_rx): (SyncSender<Event>, Receiver<Event>) =
+            std::sync::mpsc::sync_channel(CONFIG_EVENT_BUFFER_SIZE);
+
+        // Create unbounded channel as required by notify crate
+        let (notify_tx, notify_rx) = std::sync::mpsc::channel::<Event>();
+
+        // Spawn intermediate thread to bridge unbounded -> bounded with overflow handling
+        std::thread::spawn(move || {
+            while let Ok(event) = notify_rx.recv() {
+                if let Err(e) = bounded_tx.try_send(event) {
+                    tracing::warn!(
+                        error = %e,
+                        "Config event buffer full, dropping file system event"
+                    );
+                }
+            }
+        });
+
+        let mut watcher = notify::recommended_watcher(move |res| {
+            if let Ok(event) = res {
+                let _ = notify_tx.send(event);
+            }
+        })?;
         watcher.watch(Path::new(&self.config_path), RecursiveMode::NonRecursive)?;
 
         while context.is_online() {
-            match rx.try_recv() {
+            match bounded_rx.try_recv() {
                 Ok(_event) => {
                     std::thread::sleep(std::time::Duration::from_millis(100));
 
