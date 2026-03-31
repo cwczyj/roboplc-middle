@@ -7,7 +7,7 @@
 // - 保留此文件仅供向后兼容和测试使用
 
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, Sender as StdSender};
+use std::sync::mpsc::{sync_channel, SyncSender as StdSender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -44,7 +44,8 @@ pub fn handle_device_control_request(
         );
     }
 
-    let (std_tx, std_rx): (StdSender<DeviceResponseData>, _) = channel();
+    let (std_tx, std_rx): (StdSender<DeviceResponseData>, _) =
+        sync_channel(crate::MAX_PENDING_RESPONSES);
 
     let message = Message::DeviceControl {
         device_id: request.device_id,

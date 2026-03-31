@@ -21,7 +21,7 @@
 use roboplc::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, SyncSender};
 
 #[derive(Clone, Debug, DataPolicy)]
 pub enum Message {
@@ -31,7 +31,7 @@ pub enum Message {
         operation: Operation,
         params: JsonValue,
         correlation_id: u64,
-        respond_to: Option<Sender<DeviceResponseData>>,
+        respond_to: Option<SyncSender<DeviceResponseData>>,
     },
     DeviceResponse {
         device_id: String,

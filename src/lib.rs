@@ -65,6 +65,23 @@ use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Arc;
 use std::time::Instant;
 
+// =============================================================================
+// Channel Capacity Constants
+// =============================================================================
+// These constants define bounded channel capacities to prevent memory
+// exhaustion under high load or slow consumer scenarios.
+// Using sync_channel instead of unbounded channel provides backpressure.
+
+/// Maximum pending responses for RPC handler channel.
+/// Prevents memory exhaustion when clients send requests faster than
+/// the Modbus worker can process them.
+pub const MAX_PENDING_RESPONSES: usize = 100;
+
+/// Maximum pending heartbeat responses channel capacity.
+/// Prevents memory exhaustion when heartbeat checks pile up due to
+/// slow device responses or network issues.
+pub const MAX_PENDING_HEARTBEATS: usize = 50;
+
 /// 设备状态跟踪
 ///
 /// 记录每个设备的连接状态和通信指标，用于监控设备健康状态。

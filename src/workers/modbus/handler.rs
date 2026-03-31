@@ -198,7 +198,7 @@ impl DeviceControlHandler {
         operation: Operation,
         params: JsonValue,
         correlation_id: u64,
-        respond_to: Option<std::sync::mpsc::Sender<crate::messages::DeviceResponseData>>,
+        respond_to: Option<std::sync::mpsc::SyncSender<crate::messages::DeviceResponseData>>,
         context: &Context<Message, Variables>,
     ) {
         let send_response = |success: bool, data: JsonValue, error: Option<String>| {

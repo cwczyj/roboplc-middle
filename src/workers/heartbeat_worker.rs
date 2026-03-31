@@ -55,7 +55,7 @@ impl HeartbeatWorker {
         let start = SystemTime::now();
         let correlation_id = Self::generate_correlation_id();
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(crate::MAX_PENDING_HEARTBEATS);
 
         context.hub().send(Message::DeviceControl {
             device_id: device_id.to_string(),

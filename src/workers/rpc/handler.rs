@@ -16,7 +16,7 @@ use roboplc::prelude::Hub;
 use serde_json::Value as JsonValue;
 
 use std::net::SocketAddr;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::sync_channel;
 use std::time::{Duration, SystemTime};
 
 use super::types::{RpcMethod, RpcResultType};
@@ -125,8 +125,9 @@ impl RpcHandler {
     ) -> RpcResult<RpcResultType> {
         let correlation_id = next_correlation_id();
 
-        // Create std::sync::mpsc channel for Hub response (Message::DeviceControl uses std channel)
-        let (response_tx, response_rx) = channel::<DeviceResponseData>();
+        // Create std::sync::mpsc bounded channel for Hub response (Message::DeviceControl uses std channel)
+        let (response_tx, response_rx) =
+            sync_channel::<DeviceResponseData>(crate::MAX_PENDING_RESPONSES);
 
         // Send Message::DeviceControl to Hub directly
         let message = Message::DeviceControl {
