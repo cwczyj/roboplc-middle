@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::time;
 
 #[derive(WorkerOpts)]
-#[worker_opts(name = "device_manager")]
+#[worker_opts(name = "device_manager", cpu = 4, scheduling = "fifo", priority = 50)]
 pub struct DeviceManager {
     config: Config,
     #[allow(dead_code)]
