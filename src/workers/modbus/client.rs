@@ -460,38 +460,73 @@ impl ModbusConnectionPool {
     /// Acquire a connection from the pool for parallel execution.
     /// Returns a connection that must be released via `release_connection`.
     pub fn acquire_connection(&self) -> Result<Client, Box<dyn std::error::Error>> {
-        let mut available = self.available.write();
         tracing::debug!(
             endpoint = %self.endpoint,
-            available = available.len(),
+            available = self.available.read().len(),
             pool_size = self.pool_size,
             total_created = self.total_created.load(Ordering::Relaxed),
             "Attempting to acquire connection from pool"
         );
-        while let Some(pooled) = available.pop_front() {
-            if pooled.age() >= POOL_HEALTH_CHECK_INTERVAL {
-                tracing::debug!(
-                    age_secs = pooled.age().as_secs(),
-                    "Dropping old connection from pool"
-                );
-                self.total_created.fetch_sub(1, Ordering::Relaxed);
-                continue;
-            }
 
-            if !pooled.is_healthy {
-                tracing::debug!("Dropping unhealthy connection from pool");
-                self.total_created.fetch_sub(1, Ordering::Relaxed);
-                continue;
+        let should_pop_immediately = {
+            let available = self.available.read();
+            if let Some(front) = available.front() {
+                let age = front.age();
+                let is_healthy = front.is_healthy;
+                is_healthy && age < POOL_HEALTH_CHECK_INTERVAL
+            } else {
+                false
             }
+        };
 
-            tracing::debug!(
-                endpoint = %self.endpoint,
-                available_after = available.len(),
-                "Connection acquired from pool"
-            );
-            return Ok(pooled.client);
+        if should_pop_immediately {
+            let mut available = self.available.write();
+            if let Some(pooled) = available.pop_front() {
+                if pooled.is_healthy && pooled.age() < POOL_HEALTH_CHECK_INTERVAL {
+                    tracing::debug!(
+                        endpoint = %self.endpoint,
+                        available_after = available.len(),
+                        "Connection acquired from pool"
+                    );
+                    return Ok(pooled.client);
+                }
+                self.total_created.fetch_sub(1, Ordering::Relaxed);
+            }
         }
-        drop(available);
+
+        {
+            let mut available = self.available.write();
+            let mut dropped_count = 0;
+
+            while let Some(pooled) = available.front() {
+                let should_drop = !pooled.is_healthy || pooled.age() >= POOL_HEALTH_CHECK_INTERVAL;
+                if should_drop {
+                    let _ = available.pop_front();
+                    self.total_created.fetch_sub(1, Ordering::Relaxed);
+                    dropped_count += 1;
+                } else {
+                    break;
+                }
+            }
+
+            if dropped_count > 0 {
+                tracing::debug!(
+                    dropped_count = dropped_count,
+                    remaining = available.len(),
+                    "Cleaned up stale connections from pool"
+                );
+            }
+
+            if let Some(pooled) = available.pop_front() {
+                tracing::debug!(
+                    endpoint = %self.endpoint,
+                    available_after = available.len(),
+                    "Connection acquired from pool after cleanup"
+                );
+                return Ok(pooled.client);
+            }
+        }
+
         tracing::debug!(
             endpoint = %self.endpoint,
             "Pool empty, creating new connection"
