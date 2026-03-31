@@ -1,14 +1,17 @@
 //! Hub send protection module
 //!
-//! Provides deadlock-prevention for Hub.send() operations.
-//! When Hub's internal queue is full, send() blocks. This module
-//! spawns a separate thread for the send operation with a timeout,
-//! allowing the caller to continue if send doesn't complete quickly.
+//! Provides deadlock-prevention for Hub.send() operations using a dedicated thread pool.
+//! When Hub's internal queue is full, send() blocks. This module uses a thread pool
+//! to process send operations with timeout protection, preventing thread starvation
+//! under high load.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
+use crossbeam_channel::{bounded, Sender};
+use once_cell::sync::Lazy;
 use roboplc::prelude::Hub;
 
 use crate::Message;
@@ -16,10 +19,68 @@ use crate::Message;
 /// Default timeout for Hub send operations (500ms)
 pub const DEFAULT_HUB_SEND_TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Send a message to Hub with timeout protection.
+/// Number of worker threads in the Hub send pool
+const HUB_SEND_POOL_SIZE: usize = 4;
+
+/// Maximum capacity of the Hub send task queue
+const HUB_SEND_QUEUE_CAPACITY: usize = 128;
+
+/// Task for Hub send operations
+type HubSendTask = (Hub<Message>, Message, Arc<AtomicBool>);
+
+/// Global Hub send thread pool
+static HUB_SEND_POOL: Lazy<HubSendPool> = Lazy::new(HubSendPool::new);
+
+/// Thread pool for Hub.send() operations
+struct HubSendPool {
+    sender: Sender<HubSendTask>,
+}
+
+impl HubSendPool {
+    /// Create a new Hub send thread pool
+    fn new() -> Self {
+        let (sender, receiver) = bounded::<HubSendTask>(HUB_SEND_QUEUE_CAPACITY);
+
+        // Spawn worker threads
+        for worker_id in 0..HUB_SEND_POOL_SIZE {
+            let rx = receiver.clone();
+            thread::spawn(move || {
+                tracing::debug!(worker_id = worker_id, "Hub send worker thread started");
+                while let Ok((hub, message, completed)) = rx.recv() {
+                    hub.send(message);
+                    completed.store(true, Ordering::SeqCst);
+                }
+                tracing::debug!(worker_id = worker_id, "Hub send worker thread exiting");
+            });
+        }
+
+        tracing::info!(
+            pool_size = HUB_SEND_POOL_SIZE,
+            queue_capacity = HUB_SEND_QUEUE_CAPACITY,
+            "Hub send thread pool initialized"
+        );
+
+        Self { sender }
+    }
+
+    /// Submit a Hub send task to the pool
+    fn submit(
+        &self,
+        hub: Hub<Message>,
+        message: Message,
+        completed: Arc<AtomicBool>,
+    ) -> Result<(), String> {
+        self.sender
+            .try_send((hub, message, completed))
+            .map_err(|e| format!("Failed to submit Hub send task: {:?}", e))?;
+        Ok(())
+    }
+}
+
+/// Send a message to Hub with timeout protection using a thread pool.
 ///
 /// This function prevents indefinite blocking when Hub's internal
-/// queue is full. It spawns a separate thread for the blocking send
+/// queue is full. It submits the send operation to a dedicated thread pool
 /// and times out if the send doesn't complete within the specified duration.
 ///
 /// # Arguments
@@ -47,41 +108,26 @@ pub fn send_to_hub_with_protection(
 ) -> Result<(), String> {
     let hub = hub.clone();
     let send_completed = Arc::new(AtomicBool::new(false));
-    let send_completed_clone = send_completed.clone();
-    let timed_out = Arc::new(AtomicBool::new(false));
-    let timed_out_clone = timed_out.clone();
+    let send_completed_check = send_completed.clone();
 
-    let send_thread = std::thread::spawn(move || {
-        hub.send(message);
-        // Check if caller already timed out
-        if timed_out_clone.load(Ordering::SeqCst) {
-            tracing::warn!("Hub send completed after timeout - message may be delayed");
-        }
-        send_completed_clone.store(true, Ordering::SeqCst);
-    });
+    // Submit task to thread pool
+    HUB_SEND_POOL
+        .submit(hub, message, send_completed)
+        .map_err(|e| format!("Hub send queue full: {}", e))?;
 
+    // Wait for completion with timeout
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
-        if send_completed.load(Ordering::SeqCst) {
-            let _ = send_thread.join();
+        if send_completed_check.load(Ordering::SeqCst) {
             return Ok(());
         }
-        std::thread::yield_now();
+        thread::yield_now();
     }
-
-    // Mark as timed out so the thread knows
-    timed_out.store(true, Ordering::SeqCst);
 
     tracing::warn!(
         timeout_ms = timeout.as_millis(),
         "Hub send timeout - system may be overloaded"
     );
-
-    // Try non-blocking join if thread finished
-    if send_thread.is_finished() {
-        let _ = send_thread.join();
-    }
-    // Otherwise thread completes on its own (detach behavior is acceptable here)
 
     Err("Hub send timeout - system overloaded".to_string())
 }
@@ -94,5 +140,17 @@ mod tests {
     fn default_timeout_is_reasonable() {
         assert!(DEFAULT_HUB_SEND_TIMEOUT >= Duration::from_millis(100));
         assert!(DEFAULT_HUB_SEND_TIMEOUT <= Duration::from_secs(1));
+    }
+
+    #[test]
+    fn hub_send_pool_size_is_valid() {
+        assert!(HUB_SEND_POOL_SIZE >= 1);
+        assert!(HUB_SEND_POOL_SIZE <= 16);
+    }
+
+    #[test]
+    fn hub_send_queue_capacity_is_valid() {
+        assert!(HUB_SEND_QUEUE_CAPACITY >= 64);
+        assert!(HUB_SEND_QUEUE_CAPACITY <= 1024);
     }
 }
