@@ -223,7 +223,7 @@ pub fn parse_signal_group_fields(
 ///
 /// # Returns
 ///
-/// Vec<u16> with register values ready for Modbus write.
+/// `Vec<u16>` with register values ready for Modbus write.
 /// Returns None if a field name is not found in the mapping.
 pub fn encode_fields_to_registers(
     fields_data: &serde_json::Map<String, serde_json::Value>,
