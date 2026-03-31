@@ -62,7 +62,7 @@ impl HeartbeatWorker {
         if let Err(e) = send_to_hub_with_protection(
             context.hub(),
             Message::DeviceControl {
-                device_id: device_id.to_string(),
+                device_id: String::from(device_id),
                 operation: crate::messages::Operation::GetStatus,
                 params: serde_json::json!({}),
                 correlation_id,
@@ -116,7 +116,7 @@ impl HeartbeatWorker {
                 };
 
                 let event = DeviceEvent {
-                    device_id: device_id.to_string(),
+                    device_id: String::from(device_id),
                     event_type,
                     timestamp_ms: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -159,7 +159,7 @@ impl HeartbeatWorker {
         if let Err(e) = send_to_hub_with_protection(
             context.hub(),
             Message::DeviceHeartbeat {
-                device_id: device_id.to_string(),
+                device_id: String::from(device_id),
                 timestamp_ms,
                 latency_us,
             },
@@ -170,16 +170,16 @@ impl HeartbeatWorker {
 
         if connected && latency_us > 0 {
             let sample = LatencySample {
-                device_id: device_id.to_string(),
+                device_id: String::from(device_id),
                 latency_us,
                 timestamp_ms,
             };
-            if !context.variables().latency_samples.force_push(sample) {
-                tracing::warn!(
-                    device_id = %device_id,
-                    "Latency samples buffer full, oldest sample dropped"
-                );
-            }
+            // if !context.variables().latency_samples.force_push(sample) {
+            //     tracing::warn!(
+            //         device_id = %device_id,
+            //         "Latency samples buffer full, oldest sample dropped"
+            //     );
+            // }
         }
 
         tracing::trace!(
