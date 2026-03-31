@@ -8,9 +8,9 @@
 //! - 更新设备状态到共享变量
 
 use crate::config::Config;
+use crate::next_correlation_id;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
 use roboplc::controller::prelude::*;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -53,7 +53,7 @@ impl HeartbeatWorker {
     /// 返回：(是否在线, 延迟微秒)
     fn ping_device(&self, device_id: &str, context: &Context<Message, Variables>) -> (bool, u64) {
         let start = SystemTime::now();
-        let correlation_id = Self::generate_correlation_id();
+        let correlation_id = next_correlation_id();
 
         let (tx, rx) = mpsc::sync_channel(crate::MAX_PENDING_HEARTBEATS);
 
@@ -84,12 +84,6 @@ impl HeartbeatWorker {
                 (false, 0)
             }
         }
-    }
-
-    /// 生成唯一的 correlation_id
-    fn generate_correlation_id() -> u64 {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        COUNTER.fetch_add(1, Ordering::Relaxed)
     }
 
     /// 更新设备状态到共享变量
@@ -130,7 +124,12 @@ impl HeartbeatWorker {
                 };
 
                 drop(status);
-                context.variables().device_events.force_push(event);
+                if !context.variables().device_events.force_push(event) {
+                    tracing::warn!(
+                        device_id = %device_id,
+                        "Device event buffer full, oldest event dropped"
+                    );
+                }
             }
         }
     }
@@ -160,7 +159,12 @@ impl HeartbeatWorker {
                 latency_us,
                 timestamp_ms,
             };
-            context.variables().latency_samples.force_push(sample);
+            if !context.variables().latency_samples.force_push(sample) {
+                tracing::warn!(
+                    device_id = %device_id,
+                    "Latency samples buffer full, oldest sample dropped"
+                );
+            }
         }
 
         tracing::trace!(
@@ -278,8 +282,8 @@ mod tests {
 
     #[test]
     fn correlation_id_increments() {
-        let id1 = HeartbeatWorker::generate_correlation_id();
-        let id2 = HeartbeatWorker::generate_correlation_id();
+        let id1 = next_correlation_id();
+        let id2 = next_correlation_id();
 
         assert!(id2 > id1);
     }

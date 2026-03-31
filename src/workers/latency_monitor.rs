@@ -151,12 +151,22 @@ impl Worker<Message, Variables> for LatencyMonitor {
                     latency_us,
                     timestamp_ms,
                 };
-                context.variables().latency_samples.force_push(sample);
+                if !context.variables().latency_samples.force_push(sample) {
+                    tracing::warn!(
+                        device_id = %device_id,
+                        "Latency samples buffer full, oldest sample dropped"
+                    );
+                }
 
                 if let Some(event) =
                     self.process_latency_sample(&device_id, latency_us, timestamp_ms)
                 {
-                    context.variables().device_events.force_push(event);
+                    if !context.variables().device_events.force_push(event) {
+                        tracing::warn!(
+                            device_id = %device_id,
+                            "Device event buffer full, oldest event dropped"
+                        );
+                    }
                 }
             }
         }

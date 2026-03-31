@@ -45,10 +45,13 @@
 //! 详见 [USAGE.md](USAGE.md) 获取完整使用说明。
 
 pub mod config;
+pub mod correlation;
 pub mod data_conversion;
 pub mod messages;
 
 pub mod workers;
+
+pub use correlation::next_correlation_id;
 
 pub use workers::modbus::{
     parse_register_address, parse_signal_group_fields, Backoff, ConnectionState, ModbusClient,
@@ -259,9 +262,9 @@ impl Default for Variables {
     fn default() -> Self {
         Self {
             device_states: Arc::new(DashMap::new()),
-            latency_samples: DataBuffer::bounded(100),
-            modbus_transactions: DataBuffer::bounded(100),
-            device_events: DataBuffer::bounded(100),
+            latency_samples: DataBuffer::bounded(500),
+            modbus_transactions: DataBuffer::bounded(500),
+            device_events: DataBuffer::bounded(500),
         }
     }
 }

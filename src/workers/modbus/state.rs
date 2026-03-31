@@ -105,8 +105,14 @@ impl ModbusWorkerState {
         new_state: ConnectionState,
         context: &Context<Message, Variables>,
     ) {
+        let device_id = self.device.id.clone();
         self.update_connection_state_with(new_state, |event| {
-            let _ = context.variables().device_events.force_push(event);
+            if !context.variables().device_events.force_push(event) {
+                tracing::warn!(
+                    device_id = %device_id,
+                    "Device event buffer full, oldest event dropped"
+                );
+            }
         });
     }
 
@@ -129,8 +135,14 @@ impl ModbusWorkerState {
     }
 
     pub fn record_communication(&mut self, context: &Context<Message, Variables>, latency_us: u64) {
+        let device_id = self.device.id.clone();
         self.record_communication_with(latency_us, |sample: LatencySample| {
-            let _ = context.variables().latency_samples.force_push(sample);
+            if !context.variables().latency_samples.force_push(sample) {
+                tracing::warn!(
+                    device_id = %device_id,
+                    "Latency samples buffer full, oldest sample dropped"
+                );
+            }
         });
     }
 
