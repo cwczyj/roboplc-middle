@@ -87,12 +87,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             // 配置文件日志输出
             let log_path = Path::new(&config.logging.file);
+            let parent = log_path.parent().ok_or_else(|| {
+                format!(
+                    "Invalid log file path (no parent directory): {}",
+                    config.logging.file
+                )
+            })?;
+            let filename = log_path.file_name().ok_or_else(|| {
+                format!(
+                    "Invalid log file path (no file name): {}",
+                    config.logging.file
+                )
+            })?;
             let file_appender = if config.logging.daily_rotation {
                 // 按天轮转日志文件
-                rolling::daily(log_path.parent().unwrap(), log_path.file_name().unwrap())
+                rolling::daily(parent, filename)
             } else {
                 // 不轮转，固定日志文件
-                rolling::never(log_path.parent().unwrap(), log_path.file_name().unwrap())
+                rolling::never(parent, filename)
             };
             // 使用非阻塞的文件追加器，避免阻塞主线程
             let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
