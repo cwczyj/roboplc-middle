@@ -118,7 +118,9 @@ impl Worker<Message, Variables> for ConfigUpdater {
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    tracing::debug!("Received unexpected message type in ConfigUpdater");
+                }
             }
         }
 
