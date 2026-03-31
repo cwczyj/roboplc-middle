@@ -172,6 +172,7 @@ mod tests {
             max_concurrent_ops: 3,
             max_pool_size: 5,
             heartbeat_interval_sec: 30,
+            pool_health_check_interval_sec: 30,
             signal_groups: Vec::<SignalGroup>::new(),
         }
     }
@@ -225,6 +226,7 @@ mod tests {
             max_concurrent_ops: 3,
             max_pool_size: 5,
             heartbeat_interval_sec: 30,
+            pool_health_check_interval_sec: 30,
             signal_groups: Vec::<SignalGroup>::new(),
         };
         let worker = ModbusWorker::new(device);
@@ -242,6 +244,7 @@ mod tests {
                 max_concurrent_ops: 3,
                 max_pool_size: 5,
                 heartbeat_interval_sec: 30,
+                pool_health_check_interval_sec: 30,
                 signal_groups: vec![SignalGroup {
                     name: "new_group".to_string(),
                     description: "New test group".to_string(),
@@ -274,6 +277,7 @@ mod tests {
             max_concurrent_ops: 3,
             max_pool_size: 5,
             heartbeat_interval_sec: 30,
+            pool_health_check_interval_sec: 30,
             signal_groups: Vec::<SignalGroup>::new(),
         };
         let worker = ModbusWorker::new(device);
@@ -291,6 +295,7 @@ mod tests {
                 max_concurrent_ops: 3,
                 max_pool_size: 5,
                 heartbeat_interval_sec: 30,
+                pool_health_check_interval_sec: 30,
                 signal_groups: Vec::<SignalGroup>::new(),
             }],
             server: Default::default(),

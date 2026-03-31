@@ -258,6 +258,7 @@ mod tests {
                 max_concurrent_ops: 3,
                 max_pool_size: 5,
                 heartbeat_interval_sec: 30,
+                pool_health_check_interval_sec: 30,
                 signal_groups: vec![],
             }],
         }

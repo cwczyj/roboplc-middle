@@ -68,7 +68,14 @@ impl ModbusWorkerState {
         test_client.connect()?;
 
         // If we can connect, create the pool (pool connections are lazy)
-        let pool = ModbusConnectionPool::new(endpoint, self.device.unit_id, pool_size);
+        let health_check_interval =
+            Duration::from_secs(self.device.pool_health_check_interval_sec as u64);
+        let pool = ModbusConnectionPool::new(
+            endpoint,
+            self.device.unit_id,
+            pool_size,
+            health_check_interval,
+        );
         self.connection_pool = Some(pool);
         tracing::info!(
             device_id = %self.device.id,

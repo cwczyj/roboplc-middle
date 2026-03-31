@@ -60,6 +60,9 @@ pub struct Timeouts {
     /// 心跳检测超时（毫秒，默认 1000）
     #[serde(default = "default_heartbeat_timeout_ms")]
     pub heartbeat_timeout_ms: u16,
+    /// 连接池健康检查间隔（秒，默认 30）
+    #[serde(default = "default_pool_health_check_interval")]
+    pub pool_health_check_interval_sec: u16,
 }
 
 impl Default for Timeouts {
@@ -70,6 +73,7 @@ impl Default for Timeouts {
             max_operation_timeout_ms: default_max_operation_timeout_ms(),
             hub_send_timeout_ms: default_hub_send_timeout_ms(),
             heartbeat_timeout_ms: default_heartbeat_timeout_ms(),
+            pool_health_check_interval_sec: default_pool_health_check_interval(),
         }
     }
 }
@@ -97,6 +101,11 @@ fn default_hub_send_timeout_ms() -> u16 {
 /// 默认心跳超时（1000ms）
 fn default_heartbeat_timeout_ms() -> u16 {
     1000
+}
+
+/// 默认连接池健康检查间隔（30秒）
+fn default_pool_health_check_interval() -> u16 {
+    30
 }
 
 impl Timeouts {
@@ -244,6 +253,9 @@ pub struct Device {
     /// 心跳间隔（秒）
     #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval_sec: u32,
+    /// 连接池健康检查间隔（秒）
+    #[serde(default = "default_pool_health_check_interval")]
+    pub pool_health_check_interval_sec: u16,
     /// 信号组列表
     #[serde(default)]
     pub signal_groups: Vec<SignalGroup>,
@@ -705,6 +717,7 @@ heartbeat_timeout_ms = 1500
             max_operation_timeout_ms: 30000,
             hub_send_timeout_ms: 500,
             heartbeat_timeout_ms: 1000,
+            pool_health_check_interval_sec: 30,
         };
 
         // Verify Duration conversions
