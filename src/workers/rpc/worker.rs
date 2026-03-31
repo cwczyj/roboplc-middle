@@ -41,11 +41,15 @@ impl Worker<Message, Variables> for RpcWorker {
         let hub = context.hub().clone();
         let bind_addr_clone = bind_addr.clone();
         let device_ids_clone = device_ids.clone();
+        let config_clone = self.config.clone();
 
         let runtime_handle: JoinHandle<()> = std::thread::spawn(move || {
+            let worker_threads = config_clone.server.rpc_worker_threads;
+            let max_blocking_threads = config_clone.server.rpc_max_blocking_threads;
+
             let rt = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(4)
-                .max_blocking_threads(128)
+                .worker_threads(worker_threads)
+                .max_blocking_threads(max_blocking_threads)
                 .enable_all()
                 .build()
                 .expect("RpcWorker: failed to create Tokio runtime");

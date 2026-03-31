@@ -220,6 +220,7 @@ mod tests {
                 server: Server {
                     rpc_port: 8080,
                     http_port: 8081,
+                    ..Default::default()
                 },
                 logging: Logging {
                     level: "info".to_string(),
@@ -249,6 +250,7 @@ mod tests {
                 server: Server {
                     rpc_port: 8080,
                     http_port: 8081,
+                    ..Default::default()
                 },
                 logging: Logging {
                     level: "info".to_string(),
@@ -347,6 +349,7 @@ mod tests {
                 server: Server {
                     rpc_port: 8080,
                     http_port: 8081,
+                    ..Default::default()
                 },
                 logging: Logging {
                     level: "info".to_string(),
@@ -374,6 +377,7 @@ mod tests {
                 server: Server {
                     rpc_port: 8080,
                     http_port: 8081,
+                    ..Default::default()
                 },
                 logging: Logging {
                     level: "info".to_string(),

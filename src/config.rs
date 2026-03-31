@@ -160,12 +160,20 @@ pub struct Config {
 ///
 /// - `rpc_port`: JSON-RPC 服务器端口（默认 8080）
 /// - `http_port`: HTTP 管理接口端口（默认 8081）
+/// - `rpc_worker_threads`: Tokio 工作线程数（默认 4）
+/// - `rpc_max_blocking_threads`: Tokio 最大阻塞线程数（默认 128）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Server {
     /// JSON-RPC 服务监听端口
     pub rpc_port: u16,
     /// HTTP API 监听端口
     pub http_port: u16,
+    /// Tokio 工作线程数
+    #[serde(default = "default_rpc_worker_threads")]
+    pub rpc_worker_threads: usize,
+    /// Tokio 最大阻塞线程数
+    #[serde(default = "default_rpc_max_blocking_threads")]
+    pub rpc_max_blocking_threads: usize,
 }
 
 /// 日志配置
@@ -259,6 +267,16 @@ fn default_max_pool_size() -> u8 {
 /// 默认心跳间隔（秒）
 fn default_heartbeat_interval() -> u32 {
     30
+}
+
+/// 默认 Tokio 工作线程数
+fn default_rpc_worker_threads() -> usize {
+    4
+}
+
+/// 默认 Tokio 最大阻塞线程数
+fn default_rpc_max_blocking_threads() -> usize {
+    128
 }
 
 /// 设备类型

@@ -238,6 +238,7 @@ mod tests {
             server: crate::config::Server {
                 rpc_port: 8080,
                 http_port: 8081,
+                ..Default::default()
             },
             logging: crate::config::Logging {
                 level: "info".to_string(),

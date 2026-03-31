@@ -8,6 +8,10 @@ rpc_port = 8080
 # HTTP 管理接口端口
 http_port = 8081
 
+# Tokio 运行时配置
+rpc_worker_threads = 4         # 异步运行时工作线程数
+rpc_max_blocking_threads = 128 # 阻塞操作最大线程数
+
 [logging]
 # 日志级别: trace, debug, info, warn, error
 level = "info"
