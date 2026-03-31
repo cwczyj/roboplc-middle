@@ -9,7 +9,7 @@ use super::handler::DeviceControlHandler;
 
 /// ModbusWorker wrapper with WorkerOpts for RoboPLC scheduling
 #[derive(WorkerOpts)]
-#[worker_opts(name = "modbus_worker", scheduling = "fifo", priority = 80)]
+#[worker_opts(name = "modbus_worker", cpu = 0, scheduling = "fifo", priority = 80)]
 pub struct ModbusWorker {
     handler: DeviceControlHandler,
     device_id: String,

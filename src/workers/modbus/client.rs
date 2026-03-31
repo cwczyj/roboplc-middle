@@ -14,6 +14,9 @@ use std::time::{Duration, SystemTime};
 use binrw::BinRead;
 use std::io::{Read, Seek};
 
+/// Default TCP connect timeout for Modbus connections
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
+
 /// Raw binary data reader for Modbus responses
 #[derive(Debug)]
 struct BinaryData<T> {
@@ -161,7 +164,7 @@ impl ModbusClient {
     /// 2. Execute the operation
     /// 3. On TCP connection error, reconnect and retry once
     pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
-        if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
+        if let Err(e) = self.ensure_connected(DEFAULT_CONNECT_TIMEOUT) {
             return OperationResult {
                 success: false,
                 data: JsonValue::Null,
@@ -179,7 +182,7 @@ impl ModbusClient {
                     tracing::debug!("Connection broken, reconnecting and retrying");
                     self.connection = None;
 
-                    if let Err(e) = self.ensure_connected(Duration::from_secs(1)) {
+                    if let Err(e) = self.ensure_connected(DEFAULT_CONNECT_TIMEOUT) {
                         return OperationResult {
                             success: false,
                             data: JsonValue::Null,
@@ -600,7 +603,7 @@ impl PooledConnection {
 }
 
 const POOL_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
-const POOL_CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
+const POOL_CONNECTION_TIMEOUT: Duration = DEFAULT_CONNECT_TIMEOUT;
 
 /// Connection pool for multiple concurrent Modbus connections
 ///

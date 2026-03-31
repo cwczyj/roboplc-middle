@@ -12,6 +12,7 @@ use crate::hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOU
 use crate::next_correlation_id;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
 use roboplc::controller::prelude::*;
+use roboplc::time::interval;
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -45,7 +46,7 @@ impl HeartbeatWorker {
             config,
             current_device_index: 0,
             heartbeat_interval_sec,
-            heartbeat_timeout_sec: 5,
+            heartbeat_timeout_sec: 1,
         }
     }
 
@@ -194,17 +195,17 @@ impl Worker<Message, Variables> for HeartbeatWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         tracing::info!("HeartbeatWorker started");
 
-        while context.is_online() {
+        let base_interval = Duration::from_millis(100);
+
+        for _ in interval(base_interval).take_while(|_| context.is_online()) {
             let device_count = self.config.devices.len();
 
             if device_count == 0 {
-                tracing::debug!("No devices configured, sleeping");
-                std::thread::sleep(Duration::from_secs(10));
+                tracing::debug!("No devices configured, waiting");
                 continue;
             }
 
             self.current_device_index = self.current_device_index % device_count;
-
             let device = &self.config.devices[self.current_device_index];
 
             tracing::debug!(
@@ -214,19 +215,24 @@ impl Worker<Message, Variables> for HeartbeatWorker {
             );
 
             let (connected, latency_us) = self.ping_device(&device.id, context);
-
             self.update_device_status(&device.id, connected, context);
-
             self.broadcast_heartbeat(&device.id, connected, latency_us, context);
 
             self.current_device_index = self.current_device_index.saturating_add(1) % device_count;
 
             let per_device_interval =
                 Duration::from_secs(self.heartbeat_interval_sec as u64 / device_count as u64);
-            let min_interval = Duration::from_millis(100);
-            let check_interval = per_device_interval.max(min_interval);
+            let target_interval = per_device_interval.max(base_interval);
 
-            std::thread::sleep(check_interval);
+            if target_interval > base_interval {
+                let skip_ticks = (target_interval.as_millis() / base_interval.as_millis()) as usize;
+                for _ in 1..skip_ticks {
+                    if !context.is_online() {
+                        break;
+                    }
+                    std::thread::yield_now();
+                }
+            }
         }
 
         tracing::info!("HeartbeatWorker stopped");
