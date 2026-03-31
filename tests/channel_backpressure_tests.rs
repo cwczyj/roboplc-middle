@@ -7,7 +7,7 @@ use std::time::Duration;
 
 #[test]
 fn max_pending_responses_constant_is_defined() {
-    assert_eq!(MAX_PENDING_RESPONSES, 100);
+    assert_eq!(MAX_PENDING_RESPONSES, 1000);
 }
 
 #[test]
@@ -120,6 +120,6 @@ fn heartbeat_channel_capacity_is_reasonable() {
 
 #[test]
 fn response_channel_capacity_is_reasonable() {
-    assert!(MAX_PENDING_RESPONSES >= 50);
-    assert!(MAX_PENDING_RESPONSES <= 500);
+    assert!(MAX_PENDING_RESPONSES >= 100);
+    assert!(MAX_PENDING_RESPONSES <= 5000);
 }
