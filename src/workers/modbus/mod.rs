@@ -27,5 +27,7 @@ pub use parsing::{
     parse_signal_group_fields, EncodedField, ParsedField,
 };
 pub use state::ModbusWorkerState;
-pub use types::{Backoff, ConnectionState, OperationQueue, TimeoutHandler, TransactionId};
+pub use types::{
+    Backoff, ConnectionState, OperationGuard, OperationQueue, TimeoutHandler, TransactionId,
+};
 pub use worker::ModbusWorker;

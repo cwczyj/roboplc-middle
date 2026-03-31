@@ -121,8 +121,8 @@ impl TimeoutHandler {
 
 pub struct OperationQueue<T> {
     pending: VecDeque<T>,
-    in_flight: usize,
-    max_in_flight: usize,
+    pub(crate) in_flight: usize,
+    pub(crate) max_in_flight: usize,
 }
 
 impl<T> OperationQueue<T> {
@@ -156,6 +156,34 @@ impl<T> OperationQueue<T> {
     /// Saturates at zero (safe to call when no operations are in flight).
     pub fn complete(&mut self) {
         self.in_flight = self.in_flight.saturating_sub(1);
+    }
+}
+
+// ==================== OperationGuard ====================
+
+/// RAII guard that ensures operation capacity is released
+/// even if the operation panics.
+pub struct OperationGuard {
+    on_drop: Option<Box<dyn FnOnce()>>,
+}
+
+impl OperationGuard {
+    /// Create a new guard with a callback that runs on drop.
+    pub fn new<F>(on_drop: F) -> Self
+    where
+        F: FnOnce() + 'static,
+    {
+        Self {
+            on_drop: Some(Box::new(on_drop)),
+        }
+    }
+}
+
+impl Drop for OperationGuard {
+    fn drop(&mut self) {
+        if let Some(on_drop) = self.on_drop.take() {
+            on_drop();
+        }
     }
 }
 
@@ -361,5 +389,51 @@ mod tests {
         queue.complete();
         assert_eq!(queue.in_flight_count(), 0);
         assert_eq!(queue.pending_count(), 0);
+    }
+
+    #[test]
+    fn operation_guard_releases_on_drop() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicUsize::new(1));
+        let counter_clone = counter.clone();
+
+        {
+            let _guard = OperationGuard::new(move || {
+                counter_clone.fetch_sub(1, Ordering::SeqCst);
+            });
+            assert_eq!(counter.load(Ordering::SeqCst), 1);
+        }
+
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "Guard should release capacity on drop"
+        );
+    }
+
+    #[test]
+    fn operation_guard_releases_on_panic() {
+        use std::panic::catch_unwind;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicUsize::new(1));
+        let counter_clone = counter.clone();
+
+        let result = catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = OperationGuard::new(move || {
+                counter_clone.fetch_sub(1, Ordering::SeqCst);
+            });
+            panic!("Simulated panic");
+        }));
+
+        assert!(result.is_err(), "Panic should propagate");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "Guard should release capacity even on panic"
+        );
     }
 }

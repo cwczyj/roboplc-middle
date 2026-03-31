@@ -243,8 +243,16 @@ impl DeviceControlHandler {
                     );
                     return;
                 }
-                self.handle_read_signal_group(&params, send_response, context);
+
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.handle_read_signal_group(&params, &send_response, context);
+                }));
+
                 self.state.complete_operation();
+
+                if let Err(payload) = result {
+                    std::panic::resume_unwind(payload);
+                }
             }
             Operation::WriteSignalGroup => {
                 if !self.state.try_acquire_operation() {
@@ -255,8 +263,16 @@ impl DeviceControlHandler {
                     );
                     return;
                 }
-                self.handle_write_signal_group(&params, send_response, context);
+
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.handle_write_signal_group(&params, &send_response, context);
+                }));
+
                 self.state.complete_operation();
+
+                if let Err(payload) = result {
+                    std::panic::resume_unwind(payload);
+                }
             }
         }
     }
