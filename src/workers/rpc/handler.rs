@@ -155,8 +155,7 @@ impl RpcHandler {
                 }
             }
             Err(_) => {
-                tracing::warn!(correlation_id, "Request timed out, sending cleanup");
-                self.hub.send(Message::TimeoutCleanup { correlation_id });
+                tracing::warn!(correlation_id, "Request timed out");
                 Ok(RpcResultType::Error {
                     error: "Request timed out".to_string(),
                 })

@@ -61,7 +61,7 @@ pub use messages::{DeviceResponseData, Message, Operation, SystemStatusResponse}
 use parking_lot_rt::RwLock;
 use rtsc::buf::DataBuffer;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32};
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -214,12 +214,10 @@ pub struct LatencySample {
 /// 所有 workers 的共享状态
 ///
 /// 这是 RoboPLC Hub 中的全局变量结构，所有 workers 都可以访问这些状态。
-/// 使用原子类型和锁来保证线程安全。
+/// 使用锁来保证线程安全。
 ///
 /// # 数据结构说明
 ///
-/// - `devices_count`: 使用 `AtomicU32` 进行原子计数
-/// - `system_healthy`: 使用 `AtomicBool` 标记系统健康状态
 /// - `device_states`: 使用 `Arc<RwLock<HashMap>>` 实现并发安全的随机访问
 /// - 其他字段: 使用 `DataBuffer` 实现高效的循环缓冲区
 ///
@@ -229,12 +227,6 @@ pub struct LatencySample {
 /// - `HttpWorker`: 读取设备状态以提供 API 响应
 /// - `LatencyMonitor`: 从延迟样本中读取数据进行分析
 pub struct Variables {
-    /// 活跃设备数量（原子计数器）
-    pub devices_count: AtomicU32,
-
-    /// 系统健康标志（原子布尔值）
-    pub system_healthy: AtomicBool,
-
     /// 每个设备的状态（随机访问，并发读取）
     pub device_states: Arc<RwLock<HashMap<String, DeviceStatus>>>,
 
@@ -255,8 +247,6 @@ pub struct Variables {
 impl std::fmt::Debug for Variables {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Variables")
-            .field("devices_count", &self.devices_count)
-            .field("system_healthy", &self.system_healthy)
             .field("device_states", &self.device_states)
             .field("latency_samples_len", &self.latency_samples.len())
             .field("modbus_transactions_len", &self.modbus_transactions.len())
@@ -269,8 +259,6 @@ impl std::fmt::Debug for Variables {
 impl Default for Variables {
     fn default() -> Self {
         Self {
-            devices_count: AtomicU32::new(0),
-            system_healthy: AtomicBool::new(true),
             device_states: Arc::new(RwLock::new(HashMap::new())),
             latency_samples: DataBuffer::bounded(100),
             modbus_transactions: DataBuffer::bounded(100),

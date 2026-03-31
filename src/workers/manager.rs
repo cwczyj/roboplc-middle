@@ -19,22 +19,21 @@
 //! 修复方案：
 //! - DeviceManager 不再订阅 DeviceControl 消息
 //! - ModbusWorker 直接使用 respond_to 通道响应给 RpcWorker
-//! - DeviceManager 现在只用于设备注册和可选的响应路由
+//! - DeviceManager 现在只用于设备注册
 
 use crate::config::Config;
-use crate::{DeviceResponseData, Message, Variables};
+use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use roboplc::prelude::*;
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::time;
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "device_manager")]
 pub struct DeviceManager {
     config: Config,
+    #[allow(dead_code)]
     worker_map: HashMap<String, String>,
-    pending_requests: HashMap<u64, Sender<DeviceResponseData>>,
 }
 
 impl DeviceManager {
@@ -43,11 +42,7 @@ impl DeviceManager {
         for device in &config.devices {
             worker_map.insert(device.id.clone(), format!("modbus_worker_{}", device.id));
         }
-        Self {
-            config,
-            worker_map,
-            pending_requests: HashMap::new(),
-        }
+        Self { config, worker_map }
     }
 
     fn register_devices(&self, context: &Context<Message, Variables>) {
@@ -71,18 +66,9 @@ impl Worker<Message, Variables> for DeviceManager {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         let client = context.hub().register(
             "device_manager",
-            // 重要更新：不再订阅 DeviceControl！
-            // 原因：之前 DeviceManager 收到 DeviceControl 后会转发到 Hub，
-            // 但由于自己也订阅了 DeviceControl，会再次收到自己转发的消息，
-            // 形成无限循环。
-            //
-            // 现在 ModbusWorker 直接使用 respond_to 通道响应给 RpcWorker，
-            // 不再需要 DeviceManager 路由 DeviceResponse。
-            //
-            // DeviceManager 现在只订阅：
-            // - TimeoutCleanup 消息（清理超时请求）
-            // 其他消息都不需要处理，只用于保持 worker 在线
-            event_matches!(Message::TimeoutCleanup { .. }),
+            // DeviceManager doesn't route messages anymore - ModbusWorker uses respond_to channel directly.
+            // Subscribe to DeviceControl but don't forward to avoid the infinite loop.
+            event_matches!(Message::DeviceControl { .. }),
         )?;
 
         tracing::info!(
@@ -93,21 +79,9 @@ impl Worker<Message, Variables> for DeviceManager {
         self.register_devices(context);
 
         for msg in client {
-            match msg {
-                Message::TimeoutCleanup { correlation_id } => {
-                    if let Some(_) = self.pending_requests.remove(&correlation_id) {
-                        tracing::debug!(
-                            correlation_id,
-                            "Cleaned up timed-out request from pending_requests"
-                        );
-                    }
-                }
-                Message::DeviceControl { .. }
-                | Message::DeviceResponse { .. }
-                | Message::DeviceHeartbeat { .. }
-                | Message::ConfigUpdate { .. }
-                | Message::SystemStatus { .. } => {}
-            }
+            // DeviceManager receives messages but doesn't process them.
+            // ModbusWorker handles operations directly via respond_to channel.
+            let _ = msg;
         }
 
         tracing::info!("Device Manager stopped");

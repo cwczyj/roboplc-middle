@@ -47,12 +47,7 @@ pub enum Message {
         latency_us: u64,
     },
     #[data_delivery(always)]
-    ConfigUpdate {
-        config: String,
-    },
-    TimeoutCleanup {
-        correlation_id: u64,
-    },
+    ConfigUpdate { config: String },
     SystemStatus {
         requester: String,
         respond_to: Sender<SystemStatusResponse>,

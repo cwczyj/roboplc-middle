@@ -22,7 +22,7 @@ use super::types::PendingRequest;
 )]
 pub fn cleanup_timed_out_requests(
     pending: Arc<Mutex<HashMap<u64, PendingRequest>>>,
-    hub: Hub<Message>,
+    _hub: Hub<Message>,
 ) {
     let timeout_duration = Duration::from_secs(35);
 
@@ -43,7 +43,6 @@ pub fn cleanup_timed_out_requests(
                 Some("Request timed out during cleanup".to_string()),
             ));
 
-            hub.send(Message::TimeoutCleanup { correlation_id: id });
             tracing::warn!(correlation_id = id, "Cleaned up timed-out request");
         }
     }

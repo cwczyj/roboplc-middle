@@ -57,7 +57,7 @@ pub fn handle_device_control_request(
 
     hub.send(message);
 
-    let hub_for_cleanup = hub.clone();
+    let _hub_for_cleanup = hub.clone();
     let pending_for_cleanup = pending.clone();
     tokio::task::spawn_blocking(move || match std_rx.recv_timeout(Duration::from_secs(5)) {
         Ok(response) => {
@@ -68,7 +68,6 @@ pub fn handle_device_control_request(
         }
         Err(_) => {
             tracing::warn!(correlation_id, "Request timed out in bridge");
-            hub_for_cleanup.send(Message::TimeoutCleanup { correlation_id });
 
             let mut pending_lock = pending_for_cleanup.lock().unwrap();
             if let Some(req) = pending_lock.remove(&correlation_id) {
