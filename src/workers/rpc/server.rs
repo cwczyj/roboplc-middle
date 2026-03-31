@@ -1,15 +1,15 @@
-use roboplc::prelude::Hub;
 use parking_lot_rt::RwLock;
-use std::sync::Arc;
+use roboplc::prelude::Hub;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
 use crate::messages::Message;
 
-use super::handler::RpcHandler;
 use super::connection::handle_connection;
+use super::handler::RpcHandler;
 
 struct ActiveConnections {
     tasks: RwLock<HashSet<tokio::task::Id>>,

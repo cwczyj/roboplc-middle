@@ -58,8 +58,8 @@ pub use correlation::next_correlation_id;
 
 pub use workers::modbus::{
     parse_register_address, parse_signal_group_fields, Backoff, ConnectionState, ModbusClient,
-    ModbusOp, OperationQueue, OperationResult, ParsedField, RegisterType,
-    TimeoutHandler, TransactionId,
+    ModbusOp, OperationQueue, OperationResult, ParsedField, RegisterType, TimeoutHandler,
+    TransactionId,
 };
 
 pub use messages::{DeviceResponseData, Message, Operation, SystemStatusResponse};

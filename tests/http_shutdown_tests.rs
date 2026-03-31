@@ -130,7 +130,10 @@ fn test_http_connection_drain_with_timeout() {
         }
     }
 
-    assert_eq!(drained, 5, "All connections should be drained within timeout");
+    assert_eq!(
+        drained, 5,
+        "All connections should be drained within timeout"
+    );
 }
 
 /// Test tokio runtime shutdown_timeout behavior
@@ -172,12 +175,13 @@ fn test_http_server_handle_stop() {
             .expect("Failed to create runtime");
 
         rt.block_on(async {
-            use actix_web::{App, HttpServer, web};
+            use actix_web::{web, App, HttpServer};
 
             let stopped = stopped_clone.clone();
-            let server = HttpServer::new(|| App::new().route("/", web::get().to(|| async { "ok" })))
-                .bind("127.0.0.1:0")
-                .expect("Failed to bind");
+            let server =
+                HttpServer::new(|| App::new().route("/", web::get().to(|| async { "ok" })))
+                    .bind("127.0.0.1:0")
+                    .expect("Failed to bind");
 
             let running_server = server.run();
             let server_handle = running_server.handle();
@@ -196,5 +200,8 @@ fn test_http_server_handle_stop() {
     });
 
     handle.join().unwrap();
-    assert!(server_stopped.load(Ordering::SeqCst), "Server should stop gracefully");
+    assert!(
+        server_stopped.load(Ordering::SeqCst),
+        "Server should stop gracefully"
+    );
 }

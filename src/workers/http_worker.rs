@@ -26,7 +26,8 @@ pub struct AppState {
 }
 
 async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
-    let devices: Vec<serde_json::Value> = data.device_states
+    let devices: Vec<serde_json::Value> = data
+        .device_states
         .iter()
         .map(|entry| {
             let id = entry.key();
@@ -69,7 +70,11 @@ async fn get_device_by_id(
 /// 返回系统健康状态，包括设备连接统计
 async fn get_health(data: web::Data<AppState>) -> Result<HttpResponse> {
     let total = data.device_states.len();
-    let connected = data.device_states.iter().filter(|entry| entry.value().connected).count();
+    let connected = data
+        .device_states
+        .iter()
+        .filter(|entry| entry.value().connected)
+        .count();
     let disconnected = total - connected;
 
     let status = if total == 0 {
@@ -204,8 +209,8 @@ impl Worker<Message, Variables> for HttpWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DeviceStatus;
     use crate::config::{Logging, Server};
+    use crate::DeviceStatus;
     use std::time::Instant;
 
     fn make_app_state() -> AppState {

@@ -12,8 +12,8 @@ use crate::Variables;
 
 use roboplc::controller::prelude::*;
 
-use tokio::sync::oneshot;
 use std::thread::JoinHandle;
+use tokio::sync::oneshot;
 
 use super::server::run_async_server;
 

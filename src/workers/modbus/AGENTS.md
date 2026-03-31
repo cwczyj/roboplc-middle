@@ -10,19 +10,21 @@ The `modbus/` submodule handles all Modbus TCP communication:
 - Signal group encoding/decoding
 - Transaction tracking and timeout handling
 
+**Three-tier architecture**: Worker → Handler → State separation.
+
 ## Module Structure
 
-```
-modbus/
-├── mod.rs        # Module exports and re-exports
-├── client.rs     # ModbusClient - low-level TCP client (~365 lines)
-├── worker.rs     # ModbusWorker - RoboPLC worker wrapper (~75 lines)
-├── handler.rs    # DeviceControlHandler - message handling logic (~430 lines)
-├── state.rs      # ModbusWorkerState - connection state management (~150 lines)
-├── operations.rs # Register operations and address parsing (~266 lines)
-├── parsing.rs    # Signal group encoding/decoding (~727 lines)
-└── types.rs      # Shared types: Backoff, ConnectionState, etc. (~290 lines)
-```
+ ```
+ modbus/
+ ├── mod.rs        # Module exports and re-exports
+ ├── client.rs     # ModbusClient - TCP client, largest file (1026 lines)
+ ├── worker.rs     # ModbusWorker - RoboPLC worker wrapper (~75 lines)
+ ├── handler.rs    # DeviceControlHandler - message handling logic (~430 lines)
+ ├── state.rs      # ModbusWorkerState - connection state management (~150 lines)
+ ├── operations.rs # Register operations and address parsing (~266 lines)
+ ├── parsing.rs    # Signal group encoding/decoding (~727 lines)
+ └── types.rs      # Shared types: Backoff, ConnectionState, etc. (~290 lines)
+ ```
 
 ## Key Types
 

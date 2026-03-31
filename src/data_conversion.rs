@@ -88,12 +88,10 @@ impl DataTypeConverter for DefaultDataTypeConverter {
             DataType::F32 => {
                 Some(f32::from_be_bytes([ordered[0], ordered[1], ordered[2], ordered[3]]) as f64)
             }
-            DataType::F64 => {
-                Some(f64::from_be_bytes([
-                    ordered[0], ordered[1], ordered[2], ordered[3],
-                    ordered[4], ordered[5], ordered[6], ordered[7],
-                ]))
-            }
+            DataType::F64 => Some(f64::from_be_bytes([
+                ordered[0], ordered[1], ordered[2], ordered[3], ordered[4], ordered[5], ordered[6],
+                ordered[7],
+            ])),
             DataType::Bool => Some((ordered[0] != 0) as u8 as f64),
         }
     }
@@ -154,7 +152,7 @@ impl RegisterPair {
 // ========== Private Helper Functions ==========
 
 /// Get the expected byte length for a given data type.
-/// 
+///
 /// F64 requires 8 bytes (64 bits).
 fn bytes_len(data_type: &DataType) -> Option<usize> {
     match data_type {
@@ -187,7 +185,9 @@ pub fn convert_byte_order(data: &[u8], byte_order: ByteOrder) -> Vec<u8> {
                 vec![data[2], data[3], data[0], data[1]]
             } else if data.len() == 8 {
                 // F64: reverse the order of 16-bit words
-                vec![data[6], data[7], data[4], data[5], data[2], data[3], data[0], data[1]]
+                vec![
+                    data[6], data[7], data[4], data[5], data[2], data[3], data[0], data[1],
+                ]
             } else {
                 data.to_vec()
             }
@@ -466,14 +466,16 @@ mod tests {
             test_value,
             DataType::F32,
             ByteOrder::LittleEndianByteSwap,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
             &bytes,
             DataType::F32,
             ByteOrder::LittleEndianByteSwap,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Allow small floating point tolerance for f32
         assert!((result - test_value).abs() < 0.001);
     }

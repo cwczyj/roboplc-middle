@@ -5,26 +5,20 @@
 // - 每个请求只占用 1 个 blocking thread (之前是 2 个)
 // - request.rs 和 cleanup.rs 保留用于向后兼容和测试
 
-pub mod types;
-pub mod handler;
-pub mod server;
-pub mod connection;
-pub mod request;
 pub mod cleanup;
+pub mod connection;
+pub mod handler;
+pub mod request;
+pub mod server;
+pub mod types;
 pub mod worker;
 
-pub use types::{
-    RpcMethod,
-    RpcResultType,
-    DeviceControlRequest,
-    PendingRequest,
-    ResponseSender,
-};
+pub use types::{DeviceControlRequest, PendingRequest, ResponseSender, RpcMethod, RpcResultType};
 
-pub use handler::RpcHandler;
-pub use worker::RpcWorker;
-pub use server::run_async_server;
 pub use connection::handle_connection;
+pub use handler::RpcHandler;
+pub use server::run_async_server;
+pub use worker::RpcWorker;
 
 #[allow(deprecated)]
 pub use request::handle_device_control_request;

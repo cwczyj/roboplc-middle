@@ -142,12 +142,12 @@ impl ModbusWorkerState {
     pub fn record_communication(&mut self, context: &Context<Message, Variables>, latency_us: u64) {
         let device_id = self.device.id.clone();
         self.record_communication_with(latency_us, |sample: LatencySample| {
-            if !context.variables().latency_samples.force_push(sample) {
-                tracing::warn!(
-                    device_id = %device_id,
-                    "Latency samples buffer full, oldest sample dropped"
-                );
-            }
+            // if !context.variables().latency_samples.force_push(sample) {
+            //     tracing::warn!(
+            //         device_id = %device_id,
+            //         "Latency samples buffer full, oldest sample dropped"
+            //     );
+            // }
         });
     }
 

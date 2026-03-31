@@ -1,16 +1,14 @@
 # Workers Module
 
-**Scope**: RoboPLC worker implementations for the middleware.
+RoboPLC worker implementations for the middleware.
 
 ## Overview
 
-Workers are independent execution units in the RoboPLC framework. Each worker:
-- Runs in its own thread with configurable CPU affinity
-- Uses real-time scheduling (FIFO) with configurable priority
-- Communicates via the Hub message-passing system
-- Accesses shared state through `Variables`
+Workers are independent execution units:
+- Thread with CPU affinity, RT scheduling, priority
+- Hub message-passing, shared `Variables` access
 
-## Worker Architecture
+## Architecture
 
 ```
 RpcWorker ──DeviceControl──▶ Manager ──DeviceControl──▶ ModbusWorker (per device)
@@ -24,56 +22,59 @@ HttpWorker ──SystemStatus──▶ Manager ──查询 Variables ──▶ 
 
 | Worker | File | Port | Purpose |
 |--------|------|------|---------|
-| **RpcWorker** | `rpc_worker.rs` | 8080 | JSON-RPC 2.0 server |
-| **HttpWorker** | `http_worker.rs` | 8081 | HTTP management API |
-| **DeviceManager** | `manager.rs` | - | Device registration and timeout cleanup |
-| **ConfigLoader** | `config_loader.rs` | - | Hot config reload via file watching |
-| **ConfigUpdater** | `config_updater.rs` | - | Config update processing |
-| **LatencyMonitor** | `latency_monitor.rs` | - | 3-sigma latency anomaly detection |
-| **HeartbeatWorker** | `heartbeat_worker.rs` | - | Independent heartbeat detection with latency tracking |
-| **ModbusWorker** | `modbus/worker.rs` | - | Modbus TCP client (one per device) |
+| RpcWorker | `rpc_worker.rs` | 8080 | JSON-RPC 2.0 |
+| HttpWorker | `http_worker.rs` | 8081 | HTTP API |
+| DeviceManager | `manager.rs` | - | Hub router |
+| ConfigLoader | `config_loader.rs` | - | Hot reload |
+| ConfigUpdater | `config_updater.rs` | - | Updates |
+| LatencyMonitor | `latency_monitor.rs` | - | 3-sigma |
+| HeartbeatWorker | `heartbeat_worker.rs` | - | Heartbeat |
+| ModbusWorker | `modbus/worker.rs` | - | Modbus TCP |
 
-## Worker Pattern
+## Pattern
 
 ```rust
 #[derive(WorkerOpts)]
-#[worker_opts(name = "worker_name", cpu = 1, scheduling = "fifo", priority = 80)]
-pub struct MyWorker {
-    // Worker state fields
-}
-
+#[worker_opts(name = "name", cpu = 1, scheduling = "fifo", priority = 80)]
+pub struct MyWorker;
 impl Worker<Message, Variables> for MyWorker {
-    fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
-        while context.is_online() {
-            // Worker logic
-            context.hub().send(Message::...)?;
-        }
-        Ok(())
+    fn run(&mut self, ctx: &Context<Message, Variables>) -> WResult {
+        while ctx.is_online() { ctx.hub().send(Message::...)?; } Ok(())
     }
 }
 ```
 
 ## Key Conventions
 
-- **CPU Affinity**: Workers pin to specific CPUs (e.g., `cpu = 1`)
-- **Scheduling**: Use `"fifo"` (real-time FIFO) for time-critical workers
-- **Priority**: Range 1-99 (higher = more priority). ModbusWorker uses 80.
-- **Message Types**: See `crate::messages::Message` enum
-- **Hub Communication**: Use `context.hub().send()` and `event_matches!` macro
+- CPU Affinity: Workers pin to CPUs
+- Scheduling: `"fifo"` for time-critical
+- Priority: 1-99, higher is priority
+- Message Types: `crate::messages::Message`
+- Hub: `context.hub().send()` + `event_matches!`
+
+## Cross-Cutting Utilities
+
+| Pattern | Locations | Notes |
+|---------|-----------|-------|
+| Correlation ID | `rpc/handler.rs`, `heartbeat_worker.rs`, `modbus/types.rs` | Consolidate? |
+| TimeoutHandler | `manager.rs` | Timeout cleanup |
+| Backoff | `modbus/types.rs` | Exponential backoff |
+| Time/Duration | All workers | `interval()`, `SystemTime`, `UNIX_EPOCH` |
+| Device State | `manager.rs`, `lib.rs` | Hub broadcasts `DeviceEvent` |
 
 ## Where to Look
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Add new worker | Create `src/workers/<name>.rs` | Follow existing pattern |
-| Worker registration | `src/main.rs` lines 108-130 | `controller.spawn_worker()` |
-| Message routing | `manager.rs` lines 70-115 | Device registration and timeout cleanup |
-| Shared state | `lib.rs` `Variables` struct | Arc<RwLock<>> for thread safety |
-| Message types | `messages.rs` | All Message enum variants |
+| Add worker | `src/workers/<name>.rs` | Follow pattern |
+| Register | `src/main.rs` 108-130 | `spawn_worker()` |
+| Routing | `manager.rs` 70-115 | Device cleanup |
+| State | `lib.rs` Variables | Arc<RwLock<>> |
+| Messages | `messages.rs` | Message enum |
 
 ## Anti-Patterns
 
-- **NEVER** block in worker run loops indefinitely - check `context.is_online()`
-- **NEVER** spawn threads directly - use RoboPLC's worker system
-- **NEVER** use `std::sync::Mutex` - use `parking_lot_rt::RwLock` for RT safety
-- **ALWAYS** handle Hub send errors - don't unwrap blindly
+- NEVER block run loops - check `context.is_online()`
+- NEVER spawn threads - use RoboPLC workers
+- NEVER use `std::sync::Mutex` - use `parking_lot_rt::RwLock`
+- ALWAYS handle Hub send errors

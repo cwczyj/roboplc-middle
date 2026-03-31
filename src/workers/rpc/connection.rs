@@ -33,7 +33,7 @@ pub async fn handle_connection(
                     );
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        "Request too large"
+                        "Request too large",
                     ));
                 }
             }

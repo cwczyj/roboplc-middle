@@ -1,28 +1,28 @@
 # RPC Worker Module
 
-**Scope**: JSON-RPC 2.0 server implementation for the middleware.
+**Scope**: JSON-RPC 2.0 server for the middleware.
 
 ## Overview
 
-The `rpc/` submodule handles all JSON-RPC TCP server functionality:
-- Async TCP connection handling with tokio
-- JSON-RPC 2.0 protocol parsing and response generation
-- Device control request routing to the Hub
-- Response correlation and timeout handling
+Async TCP server with JSON-RPC 2.0 protocol, device control routing, response correlation, timeout handling.
 
 ## Module Structure
 
 ```
 rpc/
-├── mod.rs        # Module exports and re-exports
-├── worker.rs     # RpcWorker - RoboPLC worker wrapper
-├── handler.rs    # RpcHandler - RpcServerHandler trait implementation
-├── server.rs     # run_async_server - main async server loop
+├── mod.rs        # Module exports
+├── worker.rs     # RpcWorker with dedicated tokio runtime (4 worker, 128 blocking threads)
+├── handler.rs    # RpcHandler implementation (consolidated request/cleanup logic)
+├── server.rs     # Main async server loop
 ├── connection.rs # TCP connection handling
-├── request.rs    # Device control request processing
-├── cleanup.rs    # Timeout request cleanup logic
+├── request.rs    # Deprecated - kept for backward compatibility
+├── cleanup.rs    # Deprecated - kept for backward compatibility
 └── types.rs      # Shared types: RpcMethod, RpcResultType, DeviceControlRequest, etc.
 ```
+
+## Wave 3 Refactoring
+
+`request.rs` and `cleanup.rs` deprecated but retained for backward compatibility. spawn_blocking logic consolidated into `handler.rs`.
 
 ## Key Types
 
@@ -55,15 +55,17 @@ rpc/
 5. **Response** → Response routed back via oneshot channel
 6. **Cleanup** → Timed-out requests cleaned up periodically
 
+## Tokio Runtime Pattern
+
+RpcWorker spawns dedicated tokio runtime with 4 worker threads and 128 blocking threads. Provides isolation from RoboPLC RT scheduler, handles concurrent JSON-RPC requests.
+
 ## Where to Look
 
 | Task | Location | Notes |
 |------|----------|-------|
 | Add RPC method | `types.rs` | `RpcMethod` enum |
-| Change request timeout | `request.rs` | `recv_timeout()` duration |
-| Modify cleanup interval | `server.rs` | `sleep(Duration::from_secs(10))` |
+| Change timeout | `handler.rs` | Consolidated request/cleanup |
 | Connection handling | `connection.rs` | TCP read/write logic |
-| Worker registration | `worker.rs` | `WorkerOpts` derive |
 
 ## Anti-Patterns
 
