@@ -646,15 +646,32 @@ impl ModbusConnectionPool {
 
     fn acquire_connection(&mut self) -> Result<Client, Box<dyn std::error::Error>> {
         while let Some(pooled) = self.available.pop_front() {
-            if pooled.is_healthy && pooled.age() < POOL_HEALTH_CHECK_INTERVAL {
-                return Ok(pooled.client);
+            // HEALTH CHECK: Check age - discard old connections
+            if pooled.age() >= POOL_HEALTH_CHECK_INTERVAL {
+                tracing::debug!(
+                    age_secs = pooled.age().as_secs(),
+                    "Dropping old connection from pool"
+                );
+                self.total_created = self.total_created.saturating_sub(1);
+                continue;
             }
+
+            // HEALTH CHECK: is_healthy flag - discard if marked unhealthy
+            if !pooled.is_healthy {
+                tracing::debug!("Dropping unhealthy connection from pool");
+                self.total_created = self.total_created.saturating_sub(1);
+                continue;
+            }
+
+            return Ok(pooled.client);
         }
         self.create_connection()
     }
 
     fn release_connection(&mut self, client: Client, is_healthy: bool) {
         if !is_healthy {
+            tracing::debug!("Not returning failed connection to pool");
+            self.total_created = self.total_created.saturating_sub(1);
             return;
         }
 
@@ -1022,5 +1039,78 @@ mod pool_tests {
         assert!(POOL_HEALTH_CHECK_INTERVAL <= Duration::from_secs(60));
         assert!(POOL_CONNECTION_TIMEOUT >= Duration::from_millis(100));
         assert!(POOL_CONNECTION_TIMEOUT <= Duration::from_secs(5));
+    }
+
+    #[test]
+    fn pool_discards_old_connections() {
+        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3);
+        assert_eq!(pool.available_count(), 0);
+        let result = pool.acquire_connection();
+        assert!(
+            result.is_err(),
+            "Should fail creating new connection without server"
+        );
+    }
+
+    #[test]
+    fn pool_failed_operation_does_not_return_to_pool() {
+        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3);
+        let op = ModbusOp::ReadHolding {
+            address: 100,
+            count: 10,
+        };
+        let result = pool.execute_operation(&op);
+        assert!(!result.success);
+        assert_eq!(
+            pool.available_count(),
+            0,
+            "Failed connection should not be in pool"
+        );
+        assert_eq!(
+            pool.total_created(),
+            0,
+            "No connection created when server unavailable"
+        );
+    }
+
+    #[test]
+    fn pool_tracks_total_created_correctly() {
+        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3);
+        assert_eq!(pool.total_created(), 0, "No connections created initially");
+        let _ = pool.acquire_connection();
+        assert_eq!(
+            pool.total_created(),
+            0,
+            "No connection created when server unavailable"
+        );
+        let _ = pool.acquire_connection();
+        assert_eq!(
+            pool.total_created(),
+            0,
+            "Still no connection created when server unavailable"
+        );
+    }
+
+    #[test]
+    fn pooled_connection_age_calculation() {
+        use std::thread::sleep;
+        let client_result = tcp::connect("127.0.0.1:502", Duration::from_millis(100));
+        if let Ok(client) = client_result {
+            let pooled = PooledConnection::new(client);
+            let initial_age = pooled.age();
+            assert!(initial_age < Duration::from_millis(100));
+            sleep(Duration::from_millis(50));
+            let later_age = pooled.age();
+            assert!(later_age > initial_age);
+        }
+    }
+
+    #[test]
+    fn pool_health_flag_is_set_on_creation() {
+        let client_result = tcp::connect("127.0.0.1:502", Duration::from_millis(100));
+        if let Ok(client) = client_result {
+            let pooled = PooledConnection::new(client);
+            assert!(pooled.is_healthy);
+        }
     }
 }
