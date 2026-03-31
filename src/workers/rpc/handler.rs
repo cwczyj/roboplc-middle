@@ -16,7 +16,9 @@ use roboplc::prelude::Hub;
 use serde_json::Value as JsonValue;
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::sync_channel;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use super::types::{RpcMethod, RpcResultType};
@@ -47,6 +49,49 @@ pub struct RpcHandler {
 impl RpcHandler {
     pub fn new(device_ids: Vec<String>, hub: Hub<Message>) -> Self {
         Self { device_ids, hub }
+    }
+
+    /// Send message to Hub with deadlock prevention.
+    ///
+    /// RoboPLC's Hub.send() is blocking and uses bounded internal channels
+    /// (default capacity 1024). When Hub's queue is full, send() blocks.
+    /// If RPC Worker blocks in send(), it cannot enter recv_timeout(),
+    /// creating a deadlock with ModbusWorker waiting for response channel.
+    ///
+    /// This method spawns a separate thread for the blocking send operation,
+    /// allowing the main thread to timeout if send doesn't complete quickly.
+    /// This prevents indefinite blocking and allows graceful error return.
+    fn send_to_hub_with_protection(
+        &self,
+        message: Message,
+        timeout: Duration,
+    ) -> Result<(), String> {
+        let hub = self.hub.clone();
+        let send_completed = Arc::new(AtomicBool::new(false));
+        let send_completed_clone = send_completed.clone();
+
+        let send_thread = std::thread::spawn(move || {
+            hub.send(message);
+            send_completed_clone.store(true, Ordering::SeqCst);
+        });
+
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            if send_completed.load(Ordering::SeqCst) {
+                // Send completed successfully
+                // Join the thread to ensure proper cleanup
+                let _ = send_thread.join();
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        tracing::warn!(
+            timeout_ms = timeout.as_millis(),
+            "Hub send timeout - system may be overloaded"
+        );
+
+        Err("Hub send timeout - system overloaded".to_string())
     }
 }
 
@@ -125,11 +170,9 @@ impl RpcHandler {
     ) -> RpcResult<RpcResultType> {
         let correlation_id = next_correlation_id();
 
-        // Create std::sync::mpsc bounded channel for Hub response (Message::DeviceControl uses std channel)
         let (response_tx, response_rx) =
             sync_channel::<DeviceResponseData>(crate::MAX_PENDING_RESPONSES);
 
-        // Send Message::DeviceControl to Hub directly
         let message = Message::DeviceControl {
             device_id: device_id.to_string(),
             operation,
@@ -138,9 +181,20 @@ impl RpcHandler {
             respond_to: Some(response_tx),
         };
 
-        self.hub.send(message);
+        // DEADLOCK FIX: Use protected send with timeout
+        // Prevents blocking indefinitely if Hub's internal queue is full
+        if let Err(e) = self.send_to_hub_with_protection(message, Duration::from_millis(500)) {
+            tracing::warn!(
+                correlation_id,
+                error = %e,
+                "Hub send failed - system overloaded"
+            );
+            return Ok(RpcResultType::Error {
+                error: format!("System overloaded: {}", e),
+            });
+        }
 
-        // Wait for response with timeout (already in blocking context from connection.rs)
+        // Now safe to wait on response - RPC Worker is not blocked in send
         match response_rx.recv_timeout(Duration::from_secs(5)) {
             Ok((success, data, error)) => {
                 if success {
