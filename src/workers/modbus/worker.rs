@@ -139,7 +139,9 @@ impl Worker<Message, Variables> for ModbusWorker {
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    tracing::debug!(device_id = %self.handler.device().id, "Received unexpected message type in ModbusWorker");
+                }
             }
         }
 
