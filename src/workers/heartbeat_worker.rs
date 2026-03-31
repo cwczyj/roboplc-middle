@@ -174,29 +174,19 @@ impl HeartbeatWorker {
 
 impl Worker<Message, Variables> for HeartbeatWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
-        let device_count = self.config.devices.len();
-
-        if device_count == 0 {
-            tracing::warn!("No devices configured, HeartbeatWorker will idle");
-            while context.is_online() {
-                std::thread::sleep(Duration::from_secs(10));
-            }
-            return Ok(());
-        }
-
-        let per_device_interval =
-            Duration::from_secs(self.heartbeat_interval_sec as u64 / device_count as u64);
-        let min_interval = Duration::from_millis(100);
-        let check_interval = per_device_interval.max(min_interval);
-
-        tracing::info!(
-            devices_count = device_count,
-            heartbeat_interval_sec = self.heartbeat_interval_sec,
-            check_interval_ms = check_interval.as_millis(),
-            "HeartbeatWorker started"
-        );
+        tracing::info!("HeartbeatWorker started");
 
         while context.is_online() {
+            let device_count = self.config.devices.len();
+
+            if device_count == 0 {
+                tracing::debug!("No devices configured, sleeping");
+                std::thread::sleep(Duration::from_secs(10));
+                continue;
+            }
+
+            self.current_device_index = self.current_device_index % device_count;
+
             let device = &self.config.devices[self.current_device_index];
 
             tracing::debug!(
@@ -211,7 +201,12 @@ impl Worker<Message, Variables> for HeartbeatWorker {
 
             self.broadcast_heartbeat(&device.id, connected, latency_us, context);
 
-            self.current_device_index = (self.current_device_index + 1) % device_count;
+            self.current_device_index = self.current_device_index.saturating_add(1) % device_count;
+
+            let per_device_interval =
+                Duration::from_secs(self.heartbeat_interval_sec as u64 / device_count as u64);
+            let min_interval = Duration::from_millis(100);
+            let check_interval = per_device_interval.max(min_interval);
 
             std::thread::sleep(check_interval);
         }
@@ -259,6 +254,26 @@ mod tests {
         let worker = HeartbeatWorker::new(config);
 
         assert_eq!(worker.heartbeat_interval_sec, 30);
+    }
+
+    #[test]
+    fn heartbeat_worker_handles_empty_device_list() {
+        let mut config = test_config();
+        config.devices.clear();
+
+        let worker = HeartbeatWorker::new(config);
+        assert_eq!(worker.heartbeat_interval_sec, 30);
+    }
+
+    #[test]
+    fn heartbeat_worker_bounds_check_index() {
+        let config = test_config();
+        let mut worker = HeartbeatWorker::new(config);
+
+        worker.current_device_index = 1000;
+        let device_count = worker.config.devices.len();
+        let bounded_index = worker.current_device_index % device_count;
+        assert_eq!(bounded_index, 0);
     }
 
     #[test]
