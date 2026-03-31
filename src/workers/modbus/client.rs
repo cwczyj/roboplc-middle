@@ -428,7 +428,7 @@ impl ModbusConnectionPool {
     }
 
     pub fn total_created(&self) -> usize {
-        self.total_created.load(Ordering::SeqCst)
+        self.total_created.load(Ordering::Relaxed)
     }
 
     pub fn endpoint(&self) -> &str {
@@ -442,16 +442,16 @@ impl ModbusConnectionPool {
     fn create_connection(&self) -> Result<Client, Box<dyn std::error::Error>> {
         tracing::debug!(
             endpoint = %self.endpoint,
-            total_created = self.total_created.load(Ordering::SeqCst),
+            total_created = self.total_created.load(Ordering::Relaxed),
             pool_size = self.pool_size,
             "Creating new Modbus connection"
         );
         let client = tcp::connect(&self.endpoint, POOL_CONNECTION_TIMEOUT)?;
         client.connect()?;
-        self.total_created.fetch_add(1, Ordering::SeqCst);
+        self.total_created.fetch_add(1, Ordering::Relaxed);
         tracing::info!(
             endpoint = %self.endpoint,
-            total_created = self.total_created.load(Ordering::SeqCst),
+            total_created = self.total_created.load(Ordering::Relaxed),
             "Modbus connection created successfully"
         );
         Ok(client)
@@ -465,7 +465,7 @@ impl ModbusConnectionPool {
             endpoint = %self.endpoint,
             available = available.len(),
             pool_size = self.pool_size,
-            total_created = self.total_created.load(Ordering::SeqCst),
+            total_created = self.total_created.load(Ordering::Relaxed),
             "Attempting to acquire connection from pool"
         );
         while let Some(pooled) = available.pop_front() {
@@ -474,13 +474,13 @@ impl ModbusConnectionPool {
                     age_secs = pooled.age().as_secs(),
                     "Dropping old connection from pool"
                 );
-                self.total_created.fetch_sub(1, Ordering::SeqCst);
+                self.total_created.fetch_sub(1, Ordering::Relaxed);
                 continue;
             }
 
             if !pooled.is_healthy {
                 tracing::debug!("Dropping unhealthy connection from pool");
-                self.total_created.fetch_sub(1, Ordering::SeqCst);
+                self.total_created.fetch_sub(1, Ordering::Relaxed);
                 continue;
             }
 
@@ -506,7 +506,7 @@ impl ModbusConnectionPool {
                 endpoint = %self.endpoint,
                 "Not returning failed connection to pool"
             );
-            self.total_created.fetch_sub(1, Ordering::SeqCst);
+            self.total_created.fetch_sub(1, Ordering::Relaxed);
             return;
         }
 
@@ -525,7 +525,7 @@ impl ModbusConnectionPool {
                 pool_size = self.pool_size,
                 "Pool at capacity, discarding connection"
             );
-            self.total_created.fetch_sub(1, Ordering::SeqCst);
+            self.total_created.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
