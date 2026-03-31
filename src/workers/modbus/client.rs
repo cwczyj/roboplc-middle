@@ -139,7 +139,16 @@ impl ModbusClient {
             };
         }
 
-        let client = self.connection.as_ref().unwrap().clone();
+        let client = match self.connection.as_ref() {
+            Some(c) => c.clone(),
+            None => {
+                return OperationResult {
+                    success: false,
+                    data: JsonValue::Null,
+                    error: Some("Connection lost during retry".to_string()),
+                };
+            }
+        };
         let result = self.dispatch_op(&client, op);
 
         // Retry on connection failure
@@ -157,7 +166,16 @@ impl ModbusClient {
                         };
                     }
 
-                    let client = self.connection.as_ref().unwrap().clone();
+                    let client = match self.connection.as_ref() {
+                        Some(c) => c.clone(),
+                        None => {
+                            return OperationResult {
+                                success: false,
+                                data: JsonValue::Null,
+                                error: Some("Connection lost after ensure_connected".to_string()),
+                            };
+                        }
+                    };
                     return self.dispatch_op(&client, op);
                 }
             }
