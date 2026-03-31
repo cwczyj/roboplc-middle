@@ -19,7 +19,7 @@ pub async fn handle_connection(
     let mut buf = [0u8; 4096];
 
     loop {
-        match timeout(Duration::from_millis(500), stream.read(&mut buf)).await {
+        match timeout(Duration::from_millis(3000), stream.read(&mut buf)).await {
             Ok(Ok(0)) => break,
             Ok(Ok(n)) => {
                 request_payload.extend_from_slice(&buf[..n]);
