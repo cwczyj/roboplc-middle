@@ -28,6 +28,7 @@ parking_lot_rt = "0.12"
 thiserror = "1.0"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+dashmap = "5.5"
 actix-web = "4.4"
 actix-rt = "2.9"
 

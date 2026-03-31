@@ -58,10 +58,8 @@ pub use workers::modbus::{
 
 pub use messages::{DeviceResponseData, Message, Operation, SystemStatusResponse};
 
-use parking_lot_rt::RwLock;
+use dashmap::DashMap;
 use rtsc::buf::DataBuffer;
-use std::collections::HashMap;
-
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -218,7 +216,8 @@ pub struct LatencySample {
 ///
 /// # 数据结构说明
 ///
-/// - `device_states`: 使用 `Arc<RwLock<HashMap>>` 实现并发安全的随机访问
+/// - `device_states`: 使用 `Arc<DashMap>` 实现并发安全的随机访问
+///   - DashMap 提供无锁读取和分片写入，避免 RwLock 写者饥饿问题
 /// - 其他字段: 使用 `DataBuffer` 实现高效的循环缓冲区
 ///
 /// # 使用场景
@@ -228,7 +227,7 @@ pub struct LatencySample {
 /// - `LatencyMonitor`: 从延迟样本中读取数据进行分析
 pub struct Variables {
     /// 每个设备的状态（随机访问，并发读取）
-    pub device_states: Arc<RwLock<HashMap<String, DeviceStatus>>>,
+    pub device_states: Arc<DashMap<String, DeviceStatus>>,
 
     /// 延迟监控样本（批量统计数据）
     pub latency_samples: DataBuffer<LatencySample>,
@@ -259,7 +258,7 @@ impl std::fmt::Debug for Variables {
 impl Default for Variables {
     fn default() -> Self {
         Self {
-            device_states: Arc::new(RwLock::new(HashMap::new())),
+            device_states: Arc::new(DashMap::new()),
             latency_samples: DataBuffer::bounded(100),
             modbus_transactions: DataBuffer::bounded(100),
             device_events: DataBuffer::bounded(100),

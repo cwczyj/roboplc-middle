@@ -46,7 +46,7 @@ impl DeviceManager {
     }
 
     fn register_devices(&self, context: &Context<Message, Variables>) {
-        let mut states = context.variables().device_states.write();
+        let states = &context.variables().device_states;
         for device in &self.config.devices {
             states.insert(
                 device.id.clone(),

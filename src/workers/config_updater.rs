@@ -10,10 +10,9 @@
 
 use crate::config::Config;
 use crate::{DeviceStatus, Message, Variables};
-use parking_lot_rt::RwLock;
+use dashmap::DashMap;
 use roboplc::controller::prelude::*;
 use roboplc::prelude::*;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -32,7 +31,7 @@ impl ConfigUpdater {
     fn apply_config_update(
         &mut self,
         config_json: &str,
-        device_states: &Arc<RwLock<HashMap<String, DeviceStatus>>>,
+        device_states: &Arc<DashMap<String, DeviceStatus>>,
     ) -> Result<ConfigUpdateSummary, Box<dyn std::error::Error>> {
         let new_config: Config = serde_json::from_str(config_json)?;
 
@@ -57,14 +56,12 @@ impl ConfigUpdater {
             .map(|s| s.to_string())
             .collect();
 
-        let mut states = device_states.write();
-
         for device_id in &removed {
-            states.remove(device_id);
+            device_states.remove(device_id);
         }
 
         for device_id in &added {
-            states.insert(
+            device_states.insert(
                 device_id.clone(),
                 DeviceStatus {
                     connected: false,

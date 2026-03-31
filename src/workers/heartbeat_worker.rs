@@ -99,8 +99,8 @@ impl HeartbeatWorker {
         connected: bool,
         context: &Context<Message, Variables>,
     ) {
-        let mut states = context.variables().device_states.write();
-        if let Some(status) = states.get_mut(device_id) {
+        let states = &context.variables().device_states;
+        if let Some(mut status) = states.get_mut(device_id) {
             let was_connected = status.connected;
             status.connected = connected;
             status.last_communication = std::time::Instant::now();
@@ -129,7 +129,7 @@ impl HeartbeatWorker {
                     ),
                 };
 
-                drop(states);
+                drop(status);
                 context.variables().device_events.force_push(event);
             }
         }

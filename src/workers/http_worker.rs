@@ -11,26 +11,26 @@
 //! - 支持优雅关闭（3秒超时）
 
 use actix_web::{web, App, HttpResponse, HttpServer, Result};
+use dashmap::DashMap;
 use roboplc::controller::prelude::*;
 use serde_json::json;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::sync::oneshot;
 
-use crate::{config::Config, Message, Variables};
+use crate::{config::Config, DeviceStatus, Message, Variables};
 
 pub struct AppState {
-    pub device_states: Arc<parking_lot_rt::RwLock<HashMap<String, crate::DeviceStatus>>>,
+    pub device_states: Arc<DashMap<String, DeviceStatus>>,
     pub config: Arc<Config>,
 }
 
 async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
-    let states = data.device_states.read();
-
-    let devices: Vec<serde_json::Value> = states
+    let devices: Vec<serde_json::Value> = data.device_states
         .iter()
-        .map(|(id, status)| {
+        .map(|entry| {
+            let id = entry.key();
+            let status = entry.value();
             json!({
                 "id": id,
                 "connected": status.connected,
@@ -49,9 +49,8 @@ async fn get_device_by_id(
 ) -> Result<HttpResponse> {
     let device_id = path.into_inner();
 
-    let states = data.device_states.read();
-
-    if let Some(status) = states.get(&device_id) {
+    if let Some(status_ref) = data.device_states.get(&device_id) {
+        let status = status_ref.value();
         let body = json!({
             "id": device_id,
             "connected": status.connected,
@@ -69,10 +68,8 @@ async fn get_device_by_id(
 /// 用于健康检查，监控系统是否正常运行
 /// 返回系统健康状态，包括设备连接统计
 async fn get_health(data: web::Data<AppState>) -> Result<HttpResponse> {
-    let states = data.device_states.read();
-
-    let total = states.len();
-    let connected = states.values().filter(|s| s.connected).count();
+    let total = data.device_states.len();
+    let connected = data.device_states.iter().filter(|entry| entry.value().connected).count();
     let disconnected = total - connected;
 
     let status = if total == 0 {
@@ -213,7 +210,7 @@ mod tests {
 
     fn make_app_state() -> AppState {
         AppState {
-            device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
+            device_states: Arc::new(DashMap::new()),
             config: Arc::new(Config {
                 server: Server {
                     rpc_port: 8080,
@@ -229,9 +226,8 @@ mod tests {
         }
     }
 
-    /// 创建包含设备的AppState
     fn make_app_state_with_device(id: &str, connected: bool) -> AppState {
-        let mut states = HashMap::new();
+        let states = DashMap::new();
         states.insert(
             id.to_string(),
             DeviceStatus {
@@ -242,7 +238,7 @@ mod tests {
             },
         );
         AppState {
-            device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
+            device_states: Arc::new(states),
             config: Arc::new(Config {
                 server: Server {
                     rpc_port: 8080,
@@ -319,7 +315,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_get_health_mixed_devices() {
-        let mut states = HashMap::new();
+        let states = DashMap::new();
         states.insert(
             "device-1".to_string(),
             DeviceStatus {
@@ -339,7 +335,7 @@ mod tests {
             },
         );
         let app_state = AppState {
-            device_states: Arc::new(parking_lot_rt::RwLock::new(states)),
+            device_states: Arc::new(states),
             config: Arc::new(Config {
                 server: Server {
                     rpc_port: 8080,
@@ -365,7 +361,7 @@ mod tests {
         use crate::config::{Logging, Server};
 
         let app_state = AppState {
-            device_states: Arc::new(parking_lot_rt::RwLock::new(HashMap::new())),
+            device_states: Arc::new(DashMap::new()),
             config: Arc::new(Config {
                 server: Server {
                     rpc_port: 8080,
