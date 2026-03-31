@@ -8,12 +8,15 @@
 //! - 查询设备状态
 //! - 获取系统健康状态
 //! - 触发配置重载
+//! - 支持优雅关闭（3秒超时）
 
 use actix_web::{web, App, HttpResponse, HttpServer, Result};
 use roboplc::controller::prelude::*;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::thread::JoinHandle;
+use tokio::sync::oneshot;
 
 use crate::{config::Config, Message, Variables};
 
@@ -138,7 +141,6 @@ impl HttpWorker {
 impl Worker<Message, Variables> for HttpWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         let http_port = self.config.server.http_port;
-
         let addr = format!("0.0.0.0:{}", http_port);
 
         let device_states = context.variables().device_states.clone();
@@ -149,7 +151,10 @@ impl Worker<Message, Variables> for HttpWorker {
             config,
         });
 
-        std::thread::spawn(move || {
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+        let addr_clone = addr.clone();
+        let runtime_handle: JoinHandle<()> = std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -160,25 +165,39 @@ impl Worker<Message, Variables> for HttpWorker {
                     App::new()
                         .app_data(app_state.clone())
                         .configure(configure_routes)
+                })
+                .bind(&addr_clone)
+                .expect("HttpWorker: failed to bind address");
+
+                tracing::info!("HttpWorker: listening on http://{}", addr_clone);
+
+                let running_server = server.run();
+                let server_handle = running_server.handle();
+
+                tokio::spawn(async move {
+                    shutdown_rx.await.ok();
+                    server_handle.stop(true).await;
                 });
 
-                match server.bind(&addr) {
-                    Ok(server) => {
-                        println!("HttpWorker: listening on http://{}", addr);
-                        server
-                            .run()
-                            .await
-                            .expect("HttpWorker: failed to run server");
-                    }
-                    Err(e) => {
-                        eprintln!("HttpWorker: failed to bind {}: {}", addr, e);
-                    }
-                }
+                running_server.await.expect("HttpWorker: server run failed");
             });
+
+            rt.shutdown_timeout(std::time::Duration::from_secs(3));
         });
+
+        tracing::info!("HttpWorker started on http://{}", addr);
 
         while context.is_online() {
             std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+
+        tracing::info!("HttpWorker shutting down...");
+
+        let _ = shutdown_tx.send(());
+
+        match runtime_handle.join() {
+            Ok(()) => tracing::info!("HttpWorker stopped gracefully"),
+            Err(_) => tracing::warn!("HttpWorker thread panicked"),
         }
 
         Ok(())
