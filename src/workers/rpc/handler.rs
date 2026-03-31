@@ -10,6 +10,7 @@
 // - 每个请求只占用 1 个 blocking thread (之前是 2 个)
 
 use crate::messages::{DeviceResponseData, Message, Operation};
+use crate::next_correlation_id;
 
 use roboplc::prelude::Hub;
 
@@ -25,16 +26,6 @@ use super::types::{RpcMethod, RpcResultType};
 
 // 导入 roboplc_rpc 相关类型
 use roboplc_rpc::{server::RpcServerHandler, RpcResult};
-
-// ---------------------------------------------------------------------------
-// 关联函数
-// ---------------------------------------------------------------------------
-
-static CORRELATION_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-pub fn next_correlation_id() -> u64 {
-    CORRELATION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-}
 
 // ---------------------------------------------------------------------------
 // RPC 处理器结构体

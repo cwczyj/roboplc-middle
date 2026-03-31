@@ -21,7 +21,7 @@ pub use types::{
     ResponseSender,
 };
 
-pub use handler::{RpcHandler, next_correlation_id};
+pub use handler::RpcHandler;
 pub use worker::RpcWorker;
 pub use server::run_async_server;
 pub use connection::handle_connection;
