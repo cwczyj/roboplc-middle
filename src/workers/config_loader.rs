@@ -95,14 +95,35 @@ impl Worker<Message, Variables> for ConfigLoader {
         // Create unbounded channel as required by notify crate
         let (notify_tx, notify_rx) = std::sync::mpsc::channel::<Event>();
 
+        // Create shutdown channel for the bridging thread
+        let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel::<()>();
+
         // Spawn intermediate thread to bridge unbounded -> bounded with overflow handling
-        std::thread::spawn(move || {
-            while let Ok(event) = notify_rx.recv() {
-                if let Err(e) = bounded_tx.try_send(event) {
-                    tracing::warn!(
-                        error = %e,
-                        "Config event buffer full, dropping file system event"
-                    );
+        let bridge_handle = std::thread::spawn(move || {
+            loop {
+                match shutdown_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(()) => break, // Shutdown signal received
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        // Check for events from notify
+                        match notify_rx.try_recv() {
+                            Ok(event) => {
+                                if let Err(e) = bounded_tx.try_send(event) {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "Config event buffer full, dropping file system event"
+                                    );
+                                }
+                            }
+                            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                                // No events, continue loop
+                            }
+                            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                // Channel closed, exit thread
+                                break;
+                            }
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
         });
@@ -156,6 +177,13 @@ impl Worker<Message, Variables> for ConfigLoader {
                 }
             }
         }
+
+        // Send shutdown signal and wait for the bridging thread to finish
+        let _ = shutdown_tx.send(());
+        if let Err(e) = bridge_handle.join() {
+            tracing::warn!(error = ?e, "Failed to join config loader bridging thread");
+        }
+
         Ok(())
     }
 }
