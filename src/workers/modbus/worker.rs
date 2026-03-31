@@ -170,6 +170,7 @@ mod tests {
             byte_order: Default::default(),
             tcp_nodelay: true,
             max_concurrent_ops: 3,
+            max_pool_size: 5,
             heartbeat_interval_sec: 30,
             signal_groups: Vec::<SignalGroup>::new(),
         }
@@ -222,12 +223,12 @@ mod tests {
             byte_order: Default::default(),
             tcp_nodelay: true,
             max_concurrent_ops: 3,
+            max_pool_size: 5,
             heartbeat_interval_sec: 30,
             signal_groups: Vec::<SignalGroup>::new(),
         };
         let worker = ModbusWorker::new(device);
 
-        // Create a new config with the same device
         let new_config = Config {
             devices: vec![crate::config::Device {
                 id: "test-device".to_string(),
@@ -239,6 +240,7 @@ mod tests {
                 byte_order: Default::default(),
                 tcp_nodelay: true,
                 max_concurrent_ops: 3,
+                max_pool_size: 5,
                 heartbeat_interval_sec: 30,
                 signal_groups: vec![SignalGroup {
                     name: "new_group".to_string(),
@@ -250,6 +252,7 @@ mod tests {
             }],
             server: Default::default(),
             logging: Default::default(),
+            timeouts: Default::default(),
         };
 
         let found = worker.find_device_config(&new_config);
@@ -269,12 +272,12 @@ mod tests {
             byte_order: Default::default(),
             tcp_nodelay: true,
             max_concurrent_ops: 3,
+            max_pool_size: 5,
             heartbeat_interval_sec: 30,
             signal_groups: Vec::<SignalGroup>::new(),
         };
         let worker = ModbusWorker::new(device);
 
-        // Create a config with a different device
         let new_config = Config {
             devices: vec![crate::config::Device {
                 id: "other-device".to_string(),
@@ -286,11 +289,13 @@ mod tests {
                 byte_order: Default::default(),
                 tcp_nodelay: true,
                 max_concurrent_ops: 3,
+                max_pool_size: 5,
                 heartbeat_interval_sec: 30,
                 signal_groups: Vec::<SignalGroup>::new(),
             }],
             server: Default::default(),
             logging: Default::default(),
+            timeouts: Default::default(),
         };
 
         let found = worker.find_device_config(&new_config);

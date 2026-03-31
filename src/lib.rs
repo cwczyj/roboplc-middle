@@ -86,6 +86,27 @@ pub const MAX_PENDING_RESPONSES: usize = 1000;
 /// slow device responses or network issues.
 pub const MAX_PENDING_HEARTBEATS: usize = 50;
 
+// =============================================================================
+// Timeout Constants
+// =============================================================================
+// These constants define default timeout values used across the middleware.
+// Centralizing them ensures consistency and makes tuning easier.
+
+/// Default TCP connect timeout for Modbus connections (milliseconds)
+pub const DEFAULT_CONNECT_TIMEOUT_MS: u16 = 200;
+
+/// Default operation timeout for Modbus operations (milliseconds)
+pub const DEFAULT_OPERATION_TIMEOUT_MS: u16 = 1000;
+
+/// Maximum operation timeout for Modbus operations (milliseconds)
+pub const MAX_OPERATION_TIMEOUT_MS: u16 = 30000;
+
+/// Default timeout for Hub send operations (milliseconds)
+pub const DEFAULT_HUB_SEND_TIMEOUT_MS: u16 = 500;
+
+/// Default heartbeat timeout for device health checks (milliseconds)
+pub const DEFAULT_HEARTBEAT_TIMEOUT_MS: u16 = 1000;
+
 /// 设备状态跟踪
 ///
 /// 记录每个设备的连接状态和通信指标，用于监控设备健康状态。

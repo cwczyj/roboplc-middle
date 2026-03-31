@@ -9,13 +9,16 @@ use roboplc::io::modbus::prelude::*;
 use roboplc::io::IoMapping;
 use serde_json::Value as JsonValue;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime};
 
 use binrw::BinRead;
 use std::io::{Read, Seek};
 
+use crate::DEFAULT_CONNECT_TIMEOUT_MS;
+
 /// Default TCP connect timeout for Modbus connections
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(DEFAULT_CONNECT_TIMEOUT_MS as u64);
 
 /// Raw binary data reader for Modbus responses
 #[derive(Debug)]
@@ -388,8 +391,20 @@ pub struct ModbusConnectionPool {
     endpoint: String,
     unit_id: u8,
     pool_size: usize,
-    available: VecDeque<PooledConnection>,
-    total_created: usize,
+    available: std::sync::Mutex<VecDeque<PooledConnection>>,
+    total_created: std::sync::atomic::AtomicUsize,
+}
+
+impl Clone for ModbusConnectionPool {
+    fn clone(&self) -> Self {
+        Self {
+            endpoint: self.endpoint.clone(),
+            unit_id: self.unit_id,
+            pool_size: self.pool_size,
+            available: std::sync::Mutex::new(VecDeque::new()),
+            total_created: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
 }
 
 impl ModbusConnectionPool {
@@ -398,8 +413,8 @@ impl ModbusConnectionPool {
             endpoint,
             unit_id,
             pool_size,
-            available: VecDeque::new(),
-            total_created: 0,
+            available: std::sync::Mutex::new(VecDeque::new()),
+            total_created: AtomicUsize::new(0),
         }
     }
 
@@ -408,57 +423,114 @@ impl ModbusConnectionPool {
     }
 
     pub fn available_count(&self) -> usize {
-        self.available.len()
+        self.available.lock().unwrap().len()
     }
 
     pub fn total_created(&self) -> usize {
-        self.total_created
+        self.total_created.load(Ordering::SeqCst)
     }
 
-    fn create_connection(&mut self) -> Result<Client, Box<dyn std::error::Error>> {
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    pub fn unit_id(&self) -> u8 {
+        self.unit_id
+    }
+
+    fn create_connection(&self) -> Result<Client, Box<dyn std::error::Error>> {
+        tracing::debug!(
+            endpoint = %self.endpoint,
+            total_created = self.total_created.load(Ordering::SeqCst),
+            pool_size = self.pool_size,
+            "Creating new Modbus connection"
+        );
         let client = tcp::connect(&self.endpoint, POOL_CONNECTION_TIMEOUT)?;
         client.connect()?;
-        self.total_created += 1;
+        self.total_created.fetch_add(1, Ordering::SeqCst);
+        tracing::info!(
+            endpoint = %self.endpoint,
+            total_created = self.total_created.load(Ordering::SeqCst),
+            "Modbus connection created successfully"
+        );
         Ok(client)
     }
 
-    fn acquire_connection(&mut self) -> Result<Client, Box<dyn std::error::Error>> {
-        while let Some(pooled) = self.available.pop_front() {
-            // HEALTH CHECK: Check age - discard old connections
+    /// Acquire a connection from the pool for parallel execution.
+    /// Returns a connection that must be released via `release_connection`.
+    pub fn acquire_connection(&self) -> Result<Client, Box<dyn std::error::Error>> {
+        let mut available = self.available.lock().unwrap();
+        tracing::debug!(
+            endpoint = %self.endpoint,
+            available = available.len(),
+            pool_size = self.pool_size,
+            total_created = self.total_created.load(Ordering::SeqCst),
+            "Attempting to acquire connection from pool"
+        );
+        while let Some(pooled) = available.pop_front() {
             if pooled.age() >= POOL_HEALTH_CHECK_INTERVAL {
                 tracing::debug!(
                     age_secs = pooled.age().as_secs(),
                     "Dropping old connection from pool"
                 );
-                self.total_created = self.total_created.saturating_sub(1);
+                self.total_created.fetch_sub(1, Ordering::SeqCst);
                 continue;
             }
 
-            // HEALTH CHECK: is_healthy flag - discard if marked unhealthy
             if !pooled.is_healthy {
                 tracing::debug!("Dropping unhealthy connection from pool");
-                self.total_created = self.total_created.saturating_sub(1);
+                self.total_created.fetch_sub(1, Ordering::SeqCst);
                 continue;
             }
 
+            tracing::debug!(
+                endpoint = %self.endpoint,
+                available_after = available.len(),
+                "Connection acquired from pool"
+            );
             return Ok(pooled.client);
         }
+        drop(available);
+        tracing::debug!(
+            endpoint = %self.endpoint,
+            "Pool empty, creating new connection"
+        );
         self.create_connection()
     }
 
-    fn release_connection(&mut self, client: Client, is_healthy: bool) {
+    /// Release a connection back to the pool after operation completes.
+    pub fn release_connection(&self, client: Client, is_healthy: bool) {
         if !is_healthy {
-            tracing::debug!("Not returning failed connection to pool");
-            self.total_created = self.total_created.saturating_sub(1);
+            tracing::debug!(
+                endpoint = %self.endpoint,
+                "Not returning failed connection to pool"
+            );
+            self.total_created.fetch_sub(1, Ordering::SeqCst);
             return;
         }
 
-        if self.available.len() < self.pool_size {
-            self.available.push_back(PooledConnection::new(client));
+        let mut available = self.available.lock().unwrap();
+        if available.len() < self.pool_size {
+            available.push_back(PooledConnection::new(client));
+            tracing::debug!(
+                endpoint = %self.endpoint,
+                available = available.len(),
+                pool_size = self.pool_size,
+                "Connection returned to pool"
+            );
+        } else {
+            tracing::debug!(
+                endpoint = %self.endpoint,
+                pool_size = self.pool_size,
+                "Pool at capacity, discarding connection"
+            );
+            self.total_created.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
-    pub fn execute_operation(&mut self, op: &ModbusOp) -> OperationResult {
+    /// Execute an operation using a connection from the pool.
+    /// Thread-safe: acquires and releases connection atomically.
+    pub fn execute_operation(&self, op: &ModbusOp) -> OperationResult {
         let client = match self.acquire_connection() {
             Ok(c) => c,
             Err(e) => {
@@ -474,6 +546,11 @@ impl ModbusConnectionPool {
         self.release_connection(client, result.success);
 
         result
+    }
+
+    /// Execute an operation directly on a client (static helper for async use).
+    pub fn execute_on_client(client: &Client, unit_id: u8, op: &ModbusOp) -> OperationResult {
+        Self::dispatch_op_static(client, unit_id, op)
     }
 
     fn dispatch_op_static(client: &Client, unit_id: u8, op: &ModbusOp) -> OperationResult {

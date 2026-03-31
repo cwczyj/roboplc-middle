@@ -15,6 +15,7 @@ fn test_device() -> Device {
         byte_order: ByteOrder::BigEndian,
         tcp_nodelay: true,
         max_concurrent_ops: 3,
+        max_pool_size: 5,
         heartbeat_interval_sec: 30,
         signal_groups: vec![],
     }

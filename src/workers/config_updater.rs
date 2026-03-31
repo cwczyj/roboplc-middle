@@ -18,7 +18,6 @@ use std::time::Instant;
 
 #[derive(WorkerOpts)]
 #[worker_opts(name = "config_updater", cpu = 5, scheduling = "fifo", priority = 40)]
-
 pub struct ConfigUpdater {
     config: Config,
 }

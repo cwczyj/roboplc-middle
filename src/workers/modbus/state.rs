@@ -16,10 +16,8 @@ pub struct ModbusWorkerState {
     device: Device,
     connection_pool: Option<ModbusConnectionPool>,
     connection_state: ConnectionState,
-    last_communication: Option<SystemTime>,
     backoff: Backoff,
     timeout_handler: TimeoutHandler,
-    /// Operation queue for controlling concurrent operations
     operation_queue: OperationQueue<()>,
 }
 
@@ -30,7 +28,6 @@ impl ModbusWorkerState {
             device,
             connection_pool: None,
             connection_state: ConnectionState::Disconnected,
-            last_communication: None,
             backoff: Backoff::new(),
             timeout_handler: TimeoutHandler::new(),
             operation_queue: OperationQueue::new(max_concurrent_ops),
@@ -60,21 +57,23 @@ impl ModbusWorkerState {
 
     fn connect_pool(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = format!("{}:{}", self.device.address, self.device.port);
-        let pool_size = self.device.max_concurrent_ops as usize;
-        // Cap pool size at 5 to avoid too many connections
-        let capped_pool_size = pool_size.min(5);
+        let requested_pool_size = self.device.max_concurrent_ops as usize;
+        let max_pool_size = self.device.max_pool_size as usize;
+
+        let pool_size = requested_pool_size.min(max_pool_size);
 
         // Try to establish a single connection first to verify device is reachable
-        // This uses the same timeout approach as before for validation
         let test_client = roboplc::comm::tcp::connect(&endpoint, timeout)?;
         test_client.connect()?;
 
         // If we can connect, create the pool (pool connections are lazy)
-        let pool = ModbusConnectionPool::new(endpoint, self.device.unit_id, capped_pool_size);
+        let pool = ModbusConnectionPool::new(endpoint, self.device.unit_id, pool_size);
         self.connection_pool = Some(pool);
         tracing::info!(
             device_id = %self.device.id,
-            pool_size = capped_pool_size,
+            pool_size = pool_size,
+            requested = requested_pool_size,
+            max_allowed = max_pool_size,
             "Created Modbus connection pool"
         );
         Ok(())
@@ -175,7 +174,7 @@ impl ModbusWorkerState {
             };
         }
 
-        if let Some(pool) = &mut self.connection_pool {
+        if let Some(pool) = &self.connection_pool {
             pool.execute_operation(modbus_op)
         } else {
             OperationResult {
@@ -186,6 +185,12 @@ impl ModbusWorkerState {
         }
     }
 
+    /// Get reference to connection pool for async execution.
+    /// Returns None if not connected.
+    pub fn get_pool(&self) -> Option<&ModbusConnectionPool> {
+        self.connection_pool.as_ref()
+    }
+
     /// Try to acquire capacity for a new operation.
     /// Returns true if capacity is available, false if at max concurrent ops.
     pub fn try_acquire_operation(&mut self) -> bool {
@@ -193,8 +198,33 @@ impl ModbusWorkerState {
         self.operation_queue.pop_if_ready().is_some()
     }
 
-    /// Mark an operation as complete, releasing capacity.
-    pub fn complete_operation(&mut self) {
+    /// Thread-safe capacity acquisition for async operations.
+    /// Atomically checks and increments capacity without requiring mutable access.
+    pub fn try_acquire_operation_atomic(&self) -> bool {
+        self.operation_queue.try_acquire_atomic()
+    }
+
+    /// Mark an operation as complete, releasing capacity (thread-safe).
+    pub fn complete_operation(&self) {
         self.operation_queue.complete();
+    }
+
+    /// Get current in-flight operation count (for monitoring).
+    pub fn in_flight_count(&self) -> usize {
+        self.operation_queue.in_flight_count()
+    }
+
+    /// Execute operation directly on connection pool (bypasses ensure_connected).
+    /// Used by async tasks that have already verified connection.
+    pub fn execute_operation_direct(&self, modbus_op: &ModbusOp) -> OperationResult {
+        if let Some(pool) = &self.connection_pool {
+            pool.execute_operation(modbus_op)
+        } else {
+            OperationResult {
+                success: false,
+                data: JsonValue::Null,
+                error: Some("Connection pool not available".to_string()),
+            }
+        }
     }
 }

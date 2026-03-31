@@ -97,7 +97,15 @@ impl LatencyMonitor {
             latency_stats: HashMap::new(),
         }
     }
+}
 
+impl Default for LatencyMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LatencyMonitor {
     fn process_latency_sample(
         &mut self,
         device_id: &str,

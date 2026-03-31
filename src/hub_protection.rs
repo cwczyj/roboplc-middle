@@ -14,10 +14,11 @@ use crossbeam_channel::{bounded, Sender};
 use once_cell::sync::Lazy;
 use roboplc::prelude::Hub;
 
-use crate::Message;
+use crate::{Message, DEFAULT_HUB_SEND_TIMEOUT_MS};
 
-/// Default timeout for Hub send operations (500ms)
-pub const DEFAULT_HUB_SEND_TIMEOUT: Duration = Duration::from_millis(500);
+/// Default timeout for Hub send operations
+pub const DEFAULT_HUB_SEND_TIMEOUT: Duration =
+    Duration::from_millis(DEFAULT_HUB_SEND_TIMEOUT_MS as u64);
 
 /// Number of worker threads in the Hub send pool
 const HUB_SEND_POOL_SIZE: usize = 4;

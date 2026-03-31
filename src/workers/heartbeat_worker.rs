@@ -183,7 +183,7 @@ impl Worker<Message, Variables> for HeartbeatWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         tracing::info!("HeartbeatWorker started");
 
-        let base_interval = Duration::from_millis(100);
+        let base_interval = Duration::from_millis(1000);
 
         for _ in interval(base_interval).take_while(|_| context.is_online()) {
             let device_count = self.config.devices.len();
@@ -193,7 +193,7 @@ impl Worker<Message, Variables> for HeartbeatWorker {
                 continue;
             }
 
-            self.current_device_index = self.current_device_index % device_count;
+            self.current_device_index %= device_count;
             let device = &self.config.devices[self.current_device_index];
 
             tracing::debug!(
@@ -244,6 +244,7 @@ mod tests {
                 file: String::new(),
                 daily_rotation: false,
             },
+            timeouts: Default::default(),
             devices: vec![Device {
                 id: "test-device".to_string(),
                 device_type: DeviceType::Plc,
@@ -254,6 +255,7 @@ mod tests {
                 byte_order: Default::default(),
                 tcp_nodelay: true,
                 max_concurrent_ops: 3,
+                max_pool_size: 5,
                 heartbeat_interval_sec: 30,
                 signal_groups: vec![],
             }],

@@ -1,16 +1,46 @@
 {
-  "active_plan": "/home/lipschitz/Documents/Code/rust_code/roboplc-middle/.sisyphus/plans/2026-03-31-final-defects-fix.md",
-  "started_at": "2026-03-31T07:32:53.400Z",
+  "active_plan": "/home/lipschitz/Documents/Code/rust_code/roboplc-middle/.sisyphus/plans/modbus-parallel-access.md",
+  "started_at": "2026-03-31T09:37:13.270Z",
   "session_ids": [
-    "ses_2be223033ffeyH73XjydBz4ZOt",
-    "ses_2bd2f23aaffeWA0YqAUceuaezU",
-    "ses_2bd291cc9ffeqawNN32TMcGMQo",
-    "ses_2bd225981ffemGGA6bQ6wLoKbc",
-    "ses_2bd1f90f1ffeivGTXh16QPW0yJ",
-    "ses_2bd1d7724ffe4A9IpOl4J6bLRc",
-    "ses_2bd1a29cbffetMTRpST8Ho5jtK"
+    "ses_2bcf85a0cffelWFmi1TniKWANg",
+    "ses_2bcbdc1d3ffezMXBia7GbH1Rz0",
+    "ses_2bcb2d73cffeX5AIkWz4W9lwJZ",
+    "ses_2bcb2d733ffelO7Ee7Rx0vp4P3",
+    "ses_2bcb2d741ffekvyLFKkLJCxKHp",
+    "ses_2bcac5ce6ffeUOCadJ0oMvccq9",
+    "ses_2bca52a63ffedbjWNITSRvXtq0",
+    "ses_2bc917d62ffegbtd0btoCfaiwI",
+    "ses_2bc917d68ffeUTRy1NRjvFQIXr"
   ],
-  "plan_name": "2026-03-31-final-defects-fix",
+  "plan_name": "modbus-parallel-access",
   "agent": "atlas",
-  "task_sessions": {}
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "扩展配置结构 - 新增 `[timeouts]` 配置段",
+      "session_id": "ses_2bcbdc1d3ffezMXBia7GbH1Rz0",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-03-31T09:49:01.803Z"
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "编写异步执行测试 - TDD 测试先行",
+      "session_id": "ses_2bcac5ce6ffeUOCadJ0oMvccq9",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-03-31T10:03:43.083Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "改造 handler.rs 异步执行 - 核心改造",
+      "session_id": "ses_2bca52a63ffedbjWNITSRvXtq0",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-03-31T10:25:50.724Z"
+    }
+  }
 }

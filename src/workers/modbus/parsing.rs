@@ -298,7 +298,7 @@ fn bytes_to_registers(bytes: &[u8]) -> Vec<u16> {
 /// Byte vector with extracted data
 fn extract_bytes_from_registers(registers: &[u16], offset: usize, byte_count: usize) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(byte_count);
-    let registers_needed = (byte_count + 1) / 2;
+    let registers_needed = byte_count.div_ceil(2);
 
     for i in 0..registers_needed {
         if offset + i < registers.len() {

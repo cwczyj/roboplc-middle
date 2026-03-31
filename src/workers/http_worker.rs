@@ -226,6 +226,7 @@ mod tests {
                     file: String::new(),
                     daily_rotation: false,
                 },
+                timeouts: Default::default(),
                 devices: vec![],
             }),
         }
@@ -254,6 +255,7 @@ mod tests {
                     file: String::new(),
                     daily_rotation: false,
                 },
+                timeouts: Default::default(),
                 devices: vec![],
             }),
         }
@@ -351,6 +353,7 @@ mod tests {
                     file: String::new(),
                     daily_rotation: false,
                 },
+                timeouts: Default::default(),
                 devices: vec![],
             }),
         };
@@ -377,6 +380,7 @@ mod tests {
                     file: String::new(),
                     daily_rotation: false,
                 },
+                timeouts: Default::default(),
                 devices: vec![],
             }),
         };

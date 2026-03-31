@@ -29,7 +29,102 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 use thiserror::Error;
+
+/// 超时配置
+///
+/// 统一管理所有超时参数，确保系统行为一致。
+///
+/// # 字段说明
+///
+/// - `connect_timeout_ms`: Modbus TCP 连接超时（毫秒）
+/// - `operation_timeout_ms`: Modbus 操作超时（毫秒）
+/// - `max_operation_timeout_ms`: 最大操作超时（毫秒）
+/// - `hub_send_timeout_ms`: Hub 消息发送超时（毫秒）
+/// - `heartbeat_timeout_ms`: 心跳检测超时（毫秒）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Timeouts {
+    /// Modbus TCP 连接超时（毫秒，默认 200）
+    #[serde(default = "default_connect_timeout_ms")]
+    pub connect_timeout_ms: u16,
+    /// Modbus 操作超时（毫秒，默认 1000）
+    #[serde(default = "default_operation_timeout_ms")]
+    pub operation_timeout_ms: u16,
+    /// 最大操作超时（毫秒，默认 30000）
+    #[serde(default = "default_max_operation_timeout_ms")]
+    pub max_operation_timeout_ms: u16,
+    /// Hub 消息发送超时（毫秒，默认 500）
+    #[serde(default = "default_hub_send_timeout_ms")]
+    pub hub_send_timeout_ms: u16,
+    /// 心跳检测超时（毫秒，默认 1000）
+    #[serde(default = "default_heartbeat_timeout_ms")]
+    pub heartbeat_timeout_ms: u16,
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self {
+            connect_timeout_ms: default_connect_timeout_ms(),
+            operation_timeout_ms: default_operation_timeout_ms(),
+            max_operation_timeout_ms: default_max_operation_timeout_ms(),
+            hub_send_timeout_ms: default_hub_send_timeout_ms(),
+            heartbeat_timeout_ms: default_heartbeat_timeout_ms(),
+        }
+    }
+}
+
+/// 默认连接超时（200ms）
+fn default_connect_timeout_ms() -> u16 {
+    200
+}
+
+/// 默认操作超时（1000ms）
+fn default_operation_timeout_ms() -> u16 {
+    1000
+}
+
+/// 默认最大操作超时（30000ms）
+fn default_max_operation_timeout_ms() -> u16 {
+    30000
+}
+
+/// 默认 Hub 发送超时（500ms）
+fn default_hub_send_timeout_ms() -> u16 {
+    500
+}
+
+/// 默认心跳超时（1000ms）
+fn default_heartbeat_timeout_ms() -> u16 {
+    1000
+}
+
+impl Timeouts {
+    /// 获取连接超时 Duration
+    pub fn connect_timeout(&self) -> Duration {
+        Duration::from_millis(self.connect_timeout_ms as u64)
+    }
+
+    /// 获取操作超时 Duration
+    pub fn operation_timeout(&self) -> Duration {
+        Duration::from_millis(self.operation_timeout_ms as u64)
+    }
+
+    /// 获取最大操作超时 Duration
+    pub fn max_operation_timeout(&self) -> Duration {
+        Duration::from_millis(self.max_operation_timeout_ms as u64)
+    }
+
+    /// 获取 Hub 发送超时 Duration
+    pub fn hub_send_timeout(&self) -> Duration {
+        Duration::from_millis(self.hub_send_timeout_ms as u64)
+    }
+
+    /// 获取心跳超时 Duration
+    pub fn heartbeat_timeout(&self) -> Duration {
+        Duration::from_millis(self.heartbeat_timeout_ms as u64)
+    }
+}
 
 /// 配置根结构
 ///
@@ -39,13 +134,19 @@ use thiserror::Error;
 ///
 /// - `server`: 服务器配置（RPC 和 HTTP 端口）
 /// - `logging`: 日志配置（级别、文件路径、轮转策略）
+/// - `timeouts`: 超时配置（连接、操作、Hub 发送等超时）
 /// - `devices`: 设备列表，可以为空
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     /// 服务器配置
+    #[serde(default)]
     pub server: Server,
     /// 日志配置
+    #[serde(default)]
     pub logging: Logging,
+    /// 超时配置
+    #[serde(default)]
+    pub timeouts: Timeouts,
     /// 设备配置列表
     #[serde(default)]
     pub devices: Vec<Device>,
@@ -101,6 +202,7 @@ pub struct Logging {
 /// - `byte_order`: 字节序（大端、小端等）
 /// - `tcp_nodelay`: 是否启用 TCP_NODELAY（禁用 Nagle 算法）
 /// - `max_concurrent_ops`: 最大并发操作数
+/// - `max_pool_size`: 连接池最大大小（上限）
 /// - `heartbeat_interval_sec`: 心跳间隔（秒）
 /// - `signal_groups`: 信号组列表（用于批量读写寄存器）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +230,9 @@ pub struct Device {
     /// 最大并发操作数
     #[serde(default = "default_max_concurrent_ops")]
     pub max_concurrent_ops: u8,
+    /// 连接池最大大小（上限）
+    #[serde(default = "default_max_pool_size")]
+    pub max_pool_size: u8,
     /// 心跳间隔（秒）
     #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval_sec: u32,
@@ -144,6 +249,11 @@ fn default_tcp_nodelay() -> bool {
 /// 默认最大并发操作数
 fn default_max_concurrent_ops() -> u8 {
     10
+}
+
+/// 默认连接池最大大小
+fn default_max_pool_size() -> u8 {
+    5
 }
 
 /// 默认心跳间隔（秒）
@@ -488,5 +598,105 @@ daily_rotation = true
         let config: Config = toml::from_str(config_str).unwrap();
         assert_eq!(config.server.rpc_port, 8080);
         assert_eq!(config.devices.len(), 0);
+    }
+
+    #[test]
+    fn test_config_without_timeouts() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+
+        // Verify default timeout values
+        assert_eq!(config.timeouts.connect_timeout_ms, 200);
+        assert_eq!(config.timeouts.operation_timeout_ms, 1000);
+        assert_eq!(config.timeouts.max_operation_timeout_ms, 30000);
+        assert_eq!(config.timeouts.hub_send_timeout_ms, 500);
+        assert_eq!(config.timeouts.heartbeat_timeout_ms, 1000);
+    }
+
+    #[test]
+    fn test_config_with_timeouts() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[timeouts]
+connect_timeout_ms = 500
+operation_timeout_ms = 2000
+max_operation_timeout_ms = 60000
+hub_send_timeout_ms = 1000
+heartbeat_timeout_ms = 2000
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+
+        // Verify custom timeout values
+        assert_eq!(config.timeouts.connect_timeout_ms, 500);
+        assert_eq!(config.timeouts.operation_timeout_ms, 2000);
+        assert_eq!(config.timeouts.max_operation_timeout_ms, 60000);
+        assert_eq!(config.timeouts.hub_send_timeout_ms, 1000);
+        assert_eq!(config.timeouts.heartbeat_timeout_ms, 2000);
+    }
+
+    #[test]
+    fn test_timeouts_partial_fields() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[timeouts]
+connect_timeout_ms = 300
+heartbeat_timeout_ms = 1500
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+
+        // Verify specified values
+        assert_eq!(config.timeouts.connect_timeout_ms, 300);
+        assert_eq!(config.timeouts.heartbeat_timeout_ms, 1500);
+
+        // Verify default values for unspecified fields
+        assert_eq!(config.timeouts.operation_timeout_ms, 1000);
+        assert_eq!(config.timeouts.max_operation_timeout_ms, 30000);
+        assert_eq!(config.timeouts.hub_send_timeout_ms, 500);
+    }
+
+    #[test]
+    fn test_timeouts_duration_helpers() {
+        let timeouts = Timeouts {
+            connect_timeout_ms: 200,
+            operation_timeout_ms: 1000,
+            max_operation_timeout_ms: 30000,
+            hub_send_timeout_ms: 500,
+            heartbeat_timeout_ms: 1000,
+        };
+
+        // Verify Duration conversions
+        assert_eq!(timeouts.connect_timeout(), Duration::from_millis(200));
+        assert_eq!(timeouts.operation_timeout(), Duration::from_millis(1000));
+        assert_eq!(
+            timeouts.max_operation_timeout(),
+            Duration::from_millis(30000)
+        );
+        assert_eq!(timeouts.hub_send_timeout(), Duration::from_millis(500));
+        assert_eq!(timeouts.heartbeat_timeout(), Duration::from_millis(1000));
     }
 }

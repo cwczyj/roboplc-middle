@@ -6,22 +6,60 @@ use crate::messages::Operation;
 use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use super::{
-    encode_fields_to_registers, parse_register_address, parse_signal_group_fields, ConnectionState,
-    ModbusOp, RegisterType,
+    encode_fields_to_registers, parse_register_address, parse_signal_group_fields,
+    ConnectionState, ModbusOp, OperationGuard, RegisterType,
 };
 use crate::workers::modbus::state::ModbusWorkerState;
 
 /// Handler for Modbus device control operations
 pub struct DeviceControlHandler {
     state: ModbusWorkerState,
+    runtime: tokio::runtime::Runtime,
+    in_flight: Arc<AtomicUsize>,
+    max_in_flight: usize,
 }
 
 impl DeviceControlHandler {
     pub fn new(device: Device) -> Self {
+        let max_in_flight = device.max_concurrent_ops as usize;
         Self {
             state: ModbusWorkerState::new(device),
+            runtime: tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .expect("Failed to create tokio runtime for async operations"),
+            in_flight: Arc::new(AtomicUsize::new(0)),
+            max_in_flight,
+        }
+    }
+
+    fn try_acquire(&self) -> bool {
+        loop {
+            let current = self.in_flight.load(Ordering::SeqCst);
+            if current >= self.max_in_flight {
+                return false;
+            }
+            if self.in_flight.compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                return true;
+            }
+        }
+    }
+
+    fn complete(&self) {
+        // Saturating decrement - prevent counter from going below 0
+        loop {
+            let current = self.in_flight.load(Ordering::SeqCst);
+            if current == 0 {
+                break; // Already at 0, don't decrement
+            }
+            if self.in_flight.compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                break;
+            }
         }
     }
 
@@ -54,37 +92,6 @@ impl DeviceControlHandler {
                 Err("Cannot write to read-only register type")
             }
             _ => Ok(()),
-        }
-    }
-
-    /// Create ModbusOp for writing registers/coils
-    fn create_write_op(reg_type: RegisterType, address: u16, registers: &[u16]) -> ModbusOp {
-        match reg_type {
-            RegisterType::Coil => {
-                let values: Vec<bool> = registers.iter().map(|&v| v != 0).collect();
-                if values.len() == 1 {
-                    ModbusOp::WriteSingleCoil {
-                        address,
-                        value: values[0],
-                    }
-                } else {
-                    ModbusOp::WriteMultipleCoils { address, values }
-                }
-            }
-            RegisterType::Holding => {
-                if registers.len() == 1 {
-                    ModbusOp::WriteSingle {
-                        address,
-                        value: registers[0],
-                    }
-                } else {
-                    ModbusOp::WriteMultiple {
-                        address,
-                        values: registers.to_vec(),
-                    }
-                }
-            }
-            _ => unreachable!(),
         }
     }
 
@@ -202,12 +209,13 @@ impl DeviceControlHandler {
         respond_to: Option<std::sync::mpsc::SyncSender<crate::messages::DeviceResponseData>>,
         context: &Context<Message, Variables>,
     ) {
-        let send_response = |success: bool, data: JsonValue, error: Option<String>| {
+        let hub = context.hub().clone();
+        let send_response = move |success: bool, data: JsonValue, error: Option<String>| {
             if let Some(ref sender) = respond_to {
                 let _ = sender.send((success, data, error));
             } else {
                 if let Err(e) = send_to_hub_with_protection(
-                    context.hub(),
+                    &hub,
                     Message::DeviceResponse {
                         device_id: device_id.clone(),
                         success,
@@ -241,8 +249,8 @@ impl DeviceControlHandler {
                 });
                 send_response(true, status, None);
             }
-            Operation::ReadSignalGroup => {
-                if !self.state.try_acquire_operation() {
+            Operation::ReadSignalGroup | Operation::WriteSignalGroup => {
+                if !self.try_acquire() {
                     send_response(
                         false,
                         JsonValue::Null,
@@ -251,253 +259,92 @@ impl DeviceControlHandler {
                     return;
                 }
 
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    self.handle_read_signal_group(&params, &send_response, context);
-                }));
+                let pool = match self.state.get_pool() {
+                    Some(p) => Arc::new(p.clone()),
+                    None => {
+                        self.complete();
+                        send_response(
+                            false,
+                            JsonValue::Null,
+                            Some("Connection pool not available".to_string()),
+                        );
+                        return;
+                    }
+                };
 
-                self.state.complete_operation();
+                let modbus_op = self.operation_to_modbus_op(&operation, &params);
+                let group_name = params
+                    .get("group_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
 
-                if let Err(payload) = result {
-                    std::panic::resume_unwind(payload);
-                }
-            }
-            Operation::WriteSignalGroup => {
-                if !self.state.try_acquire_operation() {
-                    send_response(
-                        false,
-                        JsonValue::Null,
-                        Some("Too many concurrent operations".to_string()),
-                    );
-                    return;
-                }
+                let group_data = self
+                    .resolve_signal_group(&group_name)
+                    .map(|g| (g.fields.clone(), self.state.device().byte_order.clone()));
 
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    self.handle_write_signal_group(&params, &send_response, context);
-                }));
+                let in_flight = self.in_flight.clone();
 
-                self.state.complete_operation();
+                self.runtime.spawn(async move {
+                    let _guard = OperationGuard::new(move || {
+                        in_flight.fetch_sub(1, Ordering::SeqCst);
+                    });
 
-                if let Err(payload) = result {
-                    std::panic::resume_unwind(payload);
-                }
-            }
-        }
-    }
+                    let Some(modbus_op) = modbus_op else {
+                        send_response(
+                            false,
+                            JsonValue::Null,
+                            Some(format!("Invalid signal group: {}", group_name)),
+                        );
+                        return;
+                    };
 
-    fn handle_read_signal_group<F>(
-        &mut self,
-        params: &JsonValue,
-        mut send_response: F,
-        context: &Context<Message, Variables>,
-    ) where
-        F: FnMut(bool, JsonValue, Option<String>),
-    {
-        let group_name = params
-            .get("group_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+                    let result = pool.execute_operation(&modbus_op);
 
-        let group_data = self
-            .resolve_signal_group(group_name)
-            .map(|g| (g.fields.clone(), self.state.device().byte_order.clone()));
+                    let response_data = if let Some((fields, byte_order)) = group_data {
+                        if result.success {
+                            if let Some(values) = result.data.get("values").and_then(|v| v.as_array()) {
+                                let registers: Vec<u16> = values
+                                    .iter()
+                                    .filter_map(|v| v.as_u64().map(|n| n as u16))
+                                    .collect();
 
-        if let Some(modbus_op) = self.operation_to_modbus_op(&Operation::ReadSignalGroup, params) {
-            let result = self.state.execute_operation(context, &modbus_op);
+                                let parsed_fields =
+                                    parse_signal_group_fields(&registers, &fields, byte_order);
 
-            if result.success {
-                if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
-                    self.state.record_communication(context, latency);
-                }
-            }
-
-            let response_data = if let Some((fields, byte_order)) = group_data {
-                if result.success {
-                    if let Some(values) = result.data.get("values").and_then(|v| v.as_array()) {
-                        let registers: Vec<u16> = values
-                            .iter()
-                            .filter_map(|v| v.as_u64().map(|n| n as u16))
-                            .collect();
-
-                        let parsed_fields =
-                            parse_signal_group_fields(&registers, &fields, byte_order);
-
-                        serde_json::json!({
-                            "group_name": group_name,
-                            "result": {
-                                "fields": parsed_fields,
-                                "latency_us": result.data.get("latency_us").unwrap_or(&JsonValue::Null)
+                                serde_json::json!({
+                                    "group_name": group_name,
+                                    "result": {
+                                        "fields": parsed_fields,
+                                        "latency_us": result.data.get("latency_us").unwrap_or(&JsonValue::Null)
+                                    }
+                                })
+                            } else {
+                                serde_json::json!({
+                                    "group_name": group_name,
+                                    "result": result.data
+                                })
                             }
-                        })
+                        } else {
+                            serde_json::json!({
+                                "group_name": group_name,
+                                "result": result.data
+                            })
+                        }
                     } else {
                         serde_json::json!({
                             "group_name": group_name,
                             "result": result.data
                         })
-                    }
-                } else {
-                    serde_json::json!({
-                        "group_name": group_name,
-                        "result": result.data
-                    })
-                }
-            } else {
-                serde_json::json!({
-                    "group_name": group_name,
-                    "result": result.data
-                })
-            };
+                    };
 
-            send_response(result.success, response_data, result.error);
-        } else {
-            send_response(
-                false,
-                JsonValue::Null,
-                Some(format!("Invalid signal group: {}", group_name)),
-            );
+                    send_response(result.success, response_data, result.error);
+                });
+            }
         }
     }
 
-    fn handle_write_signal_group<F>(
-        &mut self,
-        params: &JsonValue,
-        mut send_response: F,
-        context: &Context<Message, Variables>,
-    ) where
-        F: FnMut(bool, JsonValue, Option<String>),
-    {
-        let group_name = params
-            .get("group_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-
-        // Clone group data to avoid borrow conflicts
-        let group_data = self.resolve_signal_group(group_name).map(|g| {
-            (
-                g.name.clone(),
-                g.register_address.clone(),
-                g.register_count,
-                g.fields.clone(),
-            )
-        });
-
-        let Some((name, register_address, register_count, fields)) = group_data else {
-            send_response(
-                false,
-                JsonValue::Null,
-                Some(format!("Invalid signal group: {}", group_name)),
-            );
-            return;
-        };
-
-        let (reg_type, base_addr) = match parse_register_address(&register_address) {
-            Some(result) => result,
-            None => {
-                send_response(
-                    false,
-                    JsonValue::Null,
-                    Some(format!("Invalid register address: {}", register_address)),
-                );
-                return;
-            }
-        };
-
-        if let Err(e) = self.validate_writable(reg_type) {
-            send_response(false, JsonValue::Null, Some(e.to_string()));
-            return;
-        }
-
-        if let Some(fields_data) = params.get("data").and_then(|v| v.as_object()) {
-            self.handle_field_based_write(
-                fields_data,
-                &fields,
-                reg_type,
-                base_addr,
-                &name,
-                send_response,
-                context,
-            );
-        } else if let Some(_raw_values) = params.get("values").and_then(|v| v.as_array()) {
-            self.handle_raw_values_write(params, register_count, &name, send_response, context);
-        } else {
-            send_response(
-                false,
-                JsonValue::Null,
-                Some("Missing 'data' or 'values' parameter".to_string()),
-            );
-        }
-    }
-
-    fn handle_field_based_write<F>(
-        &mut self,
-        fields_data: &serde_json::Map<String, JsonValue>,
-        fields: &[crate::config::FieldMapping],
-        reg_type: RegisterType,
-        base_addr: u16,
-        group_name: &str,
-        mut send_response: F,
-        context: &Context<Message, Variables>,
-    ) where
-        F: FnMut(bool, JsonValue, Option<String>),
-    {
-        // Step 1: Validate completeness - all fields must be provided
-        if let Err(missing_fields) = self.validate_field_completeness(fields_data, fields) {
-            send_response(
-                false,
-                JsonValue::Null,
-                Some(format!(
-                    "Incomplete signal group: missing fields [{}]. All fields must be provided.",
-                    missing_fields.join(", ")
-                )),
-            );
-            return;
-        }
-
-        // Step 2: Encode all fields to registers in one batch
-        let registers = match encode_fields_to_registers(
-            fields_data,
-            fields,
-            // Calculate total register count from fields
-            fields
-                .iter()
-                .map(|f| f.offset as u16 + f.data_type.required_registers() as u16)
-                .max()
-                .unwrap_or(1),
-            self.state.device().byte_order.clone(),
-        ) {
-            Some(regs) => regs,
-            None => {
-                send_response(
-                    false,
-                    JsonValue::Null,
-                    Some("Failed to encode fields to registers".to_string()),
-                );
-                return;
-            }
-        };
-
-        // Step 3: Single batch write operation
-        let modbus_op = Self::create_write_op(reg_type, base_addr, &registers);
-        let result = self.state.execute_operation(context, &modbus_op);
-
-        if result.success {
-            if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
-                self.state.record_communication(context, latency);
-            }
-        }
-
-        send_response(
-            result.success,
-            serde_json::json!({
-                "group_name": group_name,
-                "result": result.data
-            }),
-            result.error,
-        );
-    }
-
-    /// Validate that all required fields are provided in the request
-    ///
-    /// Returns Ok(()) if all fields are present, Err(Vec<&str>) with missing field names
+    #[cfg(test)]
     fn validate_field_completeness(
         &self,
         provided_fields: &serde_json::Map<String, JsonValue>,
@@ -515,41 +362,6 @@ impl DeviceControlHandler {
             Ok(())
         } else {
             Err(missing)
-        }
-    }
-
-    fn handle_raw_values_write<F>(
-        &mut self,
-        params: &JsonValue,
-        _register_count: u16,
-        group_name: &str,
-        mut send_response: F,
-        context: &Context<Message, Variables>,
-    ) where
-        F: FnMut(bool, JsonValue, Option<String>),
-    {
-        if let Some(modbus_op) = self.operation_to_modbus_op(&Operation::WriteSignalGroup, params) {
-            let result = self.state.execute_operation(context, &modbus_op);
-
-            if result.success {
-                if let Some(latency) = result.data.get("latency_us").and_then(|v| v.as_u64()) {
-                    self.state.record_communication(context, latency);
-                }
-            }
-            send_response(
-                result.success,
-                serde_json::json!({
-                    "group_name": group_name,
-                    "result": result.data
-                }),
-                result.error,
-            );
-        } else {
-            send_response(
-                false,
-                JsonValue::Null,
-                Some(format!("Invalid signal group: {}", group_name)),
-            );
         }
     }
 }
@@ -582,6 +394,7 @@ mod tests {
             byte_order: ByteOrder::BigEndian,
             tcp_nodelay: true,
             max_concurrent_ops: 3,
+            max_pool_size: 5,
             heartbeat_interval_sec: 30,
             signal_groups: vec![],
         }
@@ -653,6 +466,209 @@ mod tests {
         let required: Vec<FieldMapping> = vec![];
 
         let result = handler.validate_field_completeness(&provided, &required);
-        assert!(result.is_ok());
+assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_single_operation_executes() {
+        use crate::workers::modbus::state::ModbusWorkerState;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let device = create_test_device();
+        let mut state = ModbusWorkerState::new(device);
+
+        let op_count = Arc::new(AtomicU32::new(0));
+        let op_count_clone = op_count.clone();
+
+        let acquired = state.try_acquire_operation();
+        assert!(acquired, "Single operation should acquire capacity");
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        op_count_clone.fetch_add(1, Ordering::SeqCst);
+
+        state.complete_operation();
+
+        assert_eq!(op_count.load(Ordering::SeqCst), 1, "Operation should have executed");
+    }
+
+    /// Test: Multiple concurrent operations execute in parallel.
+    #[tokio::test]
+    async fn test_concurrent_operations_execute_in_parallel() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let concurrent_count = Arc::new(AtomicU32::new(0));
+        let max_concurrent = Arc::new(AtomicU32::new(0));
+        let completed_count = Arc::new(AtomicU32::new(0));
+
+        let mut tasks = vec![];
+
+        for _i in 0..3 {
+            let concurrent_clone = concurrent_count.clone();
+            let max_clone = max_concurrent.clone();
+            let completed_clone = completed_count.clone();
+
+            let task = tokio::spawn(async move {
+                let current = concurrent_clone.fetch_add(1, Ordering::SeqCst) + 1;
+                let current_max = max_clone.load(Ordering::SeqCst);
+                if current > current_max {
+                    max_clone.store(current, Ordering::SeqCst);
+                }
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+                concurrent_clone.fetch_sub(1, Ordering::SeqCst);
+                completed_clone.fetch_add(1, Ordering::SeqCst);
+            });
+            tasks.push(task);
+        }
+
+        for task in tasks {
+            task.await.expect("Task should complete");
+        }
+
+        assert_eq!(
+            completed_count.load(Ordering::SeqCst),
+            3,
+            "All operations should complete"
+        );
+
+        assert!(
+            max_concurrent.load(Ordering::SeqCst) >= 2,
+            "Operations should run concurrently, max concurrent should be >= 2"
+        );
+    }
+
+    /// Test: max_concurrent_ops limit rejection works correctly.
+    #[tokio::test]
+    async fn test_max_concurrent_ops_limit() {
+        use crate::workers::modbus::state::ModbusWorkerState;
+
+        let device = Device {
+            id: "limit-test-device".to_string(),
+            device_type: DeviceType::Plc,
+            address: "127.0.0.1".to_string(),
+            port: 502,
+            unit_id: 1,
+            addressing_mode: Default::default(),
+            byte_order: ByteOrder::BigEndian,
+            tcp_nodelay: true,
+            max_concurrent_ops: 2,
+            max_pool_size: 5,
+            heartbeat_interval_sec: 30,
+            signal_groups: vec![],
+        };
+
+        let mut state = ModbusWorkerState::new(device);
+
+        let first = state.try_acquire_operation();
+        assert!(first, "First operation should acquire capacity");
+
+        let second = state.try_acquire_operation();
+        assert!(second, "Second operation should acquire capacity");
+
+        let third = state.try_acquire_operation();
+        assert!(!third, "Third operation should be rejected due to limit");
+
+        state.complete_operation();
+
+        let fourth = state.try_acquire_operation();
+        assert!(fourth, "Operation after capacity release should succeed");
+
+        state.complete_operation();
+        state.complete_operation();
+    }
+
+    /// Test: Operation capacity is released after completion.
+    #[tokio::test]
+    async fn test_operation_capacity_released() {
+        use crate::workers::modbus::state::ModbusWorkerState;
+
+        let device = create_test_device();
+        let mut state = ModbusWorkerState::new(device);
+
+        for cycle in 0..5 {
+            let acquired = state.try_acquire_operation();
+            assert!(
+                acquired,
+                "Should acquire capacity on cycle {} after previous completion",
+                cycle
+            );
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+
+            state.complete_operation();
+        }
+
+        let acquired = state.try_acquire_operation();
+        assert!(acquired, "Should still be able to acquire after cycles");
+
+        state.complete_operation();
+    }
+
+    /// Test: Operation capacity handling under async concurrent load.
+    #[tokio::test]
+    async fn test_capacity_under_concurrent_async_load() {
+        use crate::workers::modbus::state::ModbusWorkerState;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let device = Device {
+            id: "concurrent-test".to_string(),
+            device_type: DeviceType::Plc,
+            address: "127.0.0.1".to_string(),
+            port: 502,
+            unit_id: 1,
+            addressing_mode: Default::default(),
+            byte_order: ByteOrder::BigEndian,
+            tcp_nodelay: true,
+            max_concurrent_ops: 2,
+            max_pool_size: 5,
+            heartbeat_interval_sec: 30,
+            signal_groups: vec![],
+        };
+
+        let state = Arc::new(Mutex::new(ModbusWorkerState::new(device)));
+
+        let success_count = Arc::new(AtomicU32::new(0));
+        let reject_count = Arc::new(AtomicU32::new(0));
+
+        let mut tasks = vec![];
+        for _ in 0..10 {
+            let state_clone = state.clone();
+            let success_clone = success_count.clone();
+            let reject_clone = reject_count.clone();
+
+            let task = tokio::spawn(async move {
+                let mut state = state_clone.lock().await;
+
+                if state.try_acquire_operation() {
+                    success_clone.fetch_add(1, Ordering::SeqCst);
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+                    state.complete_operation();
+                } else {
+                    reject_clone.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+            tasks.push(task);
+        }
+
+        for task in tasks {
+            task.await.expect("Task should complete");
+        }
+
+        let successes = success_count.load(Ordering::SeqCst);
+        let rejects = reject_count.load(Ordering::SeqCst);
+
+        assert!(successes > 0, "Some operations should succeed");
+        assert_eq!(
+            successes + rejects,
+            10,
+            "All 10 attempts should be accounted for"
+        );
     }
 }

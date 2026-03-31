@@ -240,7 +240,7 @@ mod tests {
     // Test F32 preserves precision
     #[test]
     fn convert_f32_preserves_precision() {
-        let test_value = 3.14159_f32;
+        let test_value = 1.23456_f32;
         let bytes = test_value.to_be_bytes();
         let result = <DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
             &bytes,

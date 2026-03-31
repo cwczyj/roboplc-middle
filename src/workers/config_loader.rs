@@ -28,6 +28,7 @@ impl ConfigLoader {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn reload_config(
         &mut self,
     ) -> Result<Option<(String, Vec<String>)>, Box<dyn std::error::Error>> {

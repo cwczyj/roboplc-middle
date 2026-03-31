@@ -1,13 +1,14 @@
 //! Type definitions for Modbus worker
 
+use crate::{DEFAULT_OPERATION_TIMEOUT_MS, MAX_OPERATION_TIMEOUT_MS};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime};
 
 // ==================== 常量定义 ====================
 
-const BASE_TIMEOUT: Duration = Duration::from_secs(1);
-const MAX_TIMEOUT: Duration = Duration::from_secs(30);
+const BASE_TIMEOUT: Duration = Duration::from_millis(DEFAULT_OPERATION_TIMEOUT_MS as u64);
+const MAX_TIMEOUT: Duration = Duration::from_millis(MAX_OPERATION_TIMEOUT_MS as u64);
 const BACKOFF_BASE_MS: u64 = 100;
 const BACKOFF_MAX_MS: u64 = 30000;
 
@@ -82,6 +83,12 @@ impl Backoff {
     }
 }
 
+impl Default for Backoff {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ==================== TimeoutHandler ====================
 
 #[derive(Debug, Clone, Copy)]
@@ -117,45 +124,100 @@ impl TimeoutHandler {
     }
 }
 
+impl Default for TimeoutHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ==================== OperationQueue ====================
 
+/// Thread-safe capacity limiter for concurrent operations.
+///
+/// Uses atomic counter for thread-safe capacity management without locks.
 pub struct OperationQueue<T> {
     pending: VecDeque<T>,
-    pub(crate) in_flight: usize,
-    pub(crate) max_in_flight: usize,
+    in_flight: AtomicUsize,
+    max_in_flight: usize,
 }
 
 impl<T> OperationQueue<T> {
-    /// Creates a new operation queue with the specified maximum concurrent operations.
     pub fn new(max_in_flight: usize) -> Self {
         Self {
             pending: VecDeque::new(),
-            in_flight: 0,
+            in_flight: AtomicUsize::new(0),
             max_in_flight,
         }
     }
 
-    /// Adds an operation to the pending queue.
     pub fn push(&mut self, op: T) {
         self.pending.push_back(op);
     }
 
-    /// Attempts to pop an operation from the queue if capacity is available.
-    /// Returns `Some(op)` if an operation was started, `None` if at capacity or queue empty.
     pub fn pop_if_ready(&mut self) -> Option<T> {
-        if self.in_flight < self.max_in_flight {
-            if let Some(op) = self.pending.pop_front() {
-                self.in_flight += 1;
-                return Some(op);
+        loop {
+            let current = self.in_flight.load(Ordering::SeqCst);
+            if current >= self.max_in_flight {
+                return None;
+            }
+            if self
+                .in_flight
+                .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                if let Some(op) = self.pending.pop_front() {
+                    return Some(op);
+                }
+                self.in_flight.fetch_sub(1, Ordering::SeqCst);
+                return None;
             }
         }
-        None
     }
 
-    /// Marks an operation as complete, releasing capacity for the next operation.
-    /// Saturates at zero (safe to call when no operations are in flight).
-    pub fn complete(&mut self) {
-        self.in_flight = self.in_flight.saturating_sub(1);
+    pub fn complete(&self) {
+        loop {
+            let current = self.in_flight.load(Ordering::SeqCst);
+            if current == 0 {
+                break;
+            }
+            if self
+                .in_flight
+                .compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                break;
+            }
+        }
+    }
+
+    pub fn in_flight_count(&self) -> usize {
+        self.in_flight.load(Ordering::SeqCst)
+    }
+
+    pub fn can_start(&self) -> bool {
+        self.in_flight.load(Ordering::SeqCst) < self.max_in_flight
+    }
+
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Try to atomically acquire capacity without modifying pending queue.
+    /// Returns true if capacity was acquired, false if at max capacity.
+    pub fn try_acquire_atomic(&self) -> bool {
+        loop {
+            let current = self.in_flight.load(Ordering::SeqCst);
+            if current >= self.max_in_flight {
+                return false;
+            }
+            if self
+                .in_flight
+                .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return true;
+            }
+        }
     }
 }
 
@@ -186,24 +248,6 @@ impl Drop for OperationGuard {
         }
     }
 }
-
-#[cfg(test)]
-impl<T> OperationQueue<T> {
-    fn can_start(&self) -> bool {
-        self.in_flight < self.max_in_flight
-    }
-    fn pending_count(&self) -> usize {
-        self.pending.len()
-    }
-    fn in_flight_count(&self) -> usize {
-        self.in_flight
-    }
-}
-
-// Re-export for external use (types are already public, but this makes the API cleaner)
-// Note: OperationQueue needs to remain pub for external use
-
-// ==================== Tests ====================
 
 #[cfg(test)]
 mod tests {

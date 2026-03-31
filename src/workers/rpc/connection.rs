@@ -57,7 +57,7 @@ pub async fn handle_connection(
         server.handle_request_payload::<Json>(&request_payload, addr)
     })
     .await
-    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    .map_err(std::io::Error::other)?;
 
     if let Some(response_payload) = response_payload {
         timeout(Duration::from_secs(5), stream.write_all(&response_payload)).await??;
