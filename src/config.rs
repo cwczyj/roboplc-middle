@@ -699,4 +699,61 @@ heartbeat_timeout_ms = 1500
         assert_eq!(timeouts.hub_send_timeout(), Duration::from_millis(500));
         assert_eq!(timeouts.heartbeat_timeout(), Duration::from_millis(1000));
     }
+
+    #[test]
+    fn test_timeouts_invalid_values() {
+        // Test that invalid timeout values are properly handled
+        // The spec says: "测试无效超时值的错误处理"
+
+        // Test with string value (should fail to parse)
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[timeouts]
+connect_timeout_ms = "invalid"
+"#;
+        let result: Result<Config, _> = toml::from_str(config_str);
+        assert!(result.is_err(), "Should reject string value for timeout");
+
+        // Test with negative value (should fail to parse)
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[timeouts]
+connect_timeout_ms = -1
+"#;
+        let result: Result<Config, _> = toml::from_str(config_str);
+        assert!(result.is_err(), "Should reject negative value for timeout");
+
+        // Test with float value (should fail to parse)
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[timeouts]
+operation_timeout_ms = 1000.5
+"#;
+        let result: Result<Config, _> = toml::from_str(config_str);
+        assert!(result.is_err(), "Should reject float value for timeout");
+    }
 }

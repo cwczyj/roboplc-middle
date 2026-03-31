@@ -183,7 +183,7 @@ impl Worker<Message, Variables> for HeartbeatWorker {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
         tracing::info!("HeartbeatWorker started");
 
-        let base_interval = Duration::from_millis(1000);
+        let base_interval = Duration::from_millis(100);
 
         for _ in interval(base_interval).take_while(|_| context.is_online()) {
             let device_count = self.config.devices.len();

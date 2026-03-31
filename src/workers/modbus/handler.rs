@@ -279,6 +279,27 @@ impl DeviceControlHandler {
                     .unwrap_or("")
                     .to_string();
 
+                if matches!(operation, Operation::WriteSignalGroup) {
+                    if let Some(fields_data) = params.get("data").and_then(|v| v.as_object()) {
+                        if let Some(group) = self.resolve_signal_group(&group_name) {
+                            if let Err(missing_fields) =
+                                self.validate_field_completeness(fields_data, &group.fields)
+                            {
+                                self.complete();
+                                send_response(
+                                    false,
+                                    JsonValue::Null,
+                                    Some(format!(
+                                        "Incomplete signal group: missing fields [{}]. All fields must be provided.",
+                                        missing_fields.join(", ")
+                                    )),
+                                );
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 let group_data = self
                     .resolve_signal_group(&group_name)
                     .map(|g| (g.fields.clone(), self.state.device().byte_order.clone()));
@@ -344,7 +365,6 @@ impl DeviceControlHandler {
         }
     }
 
-    #[cfg(test)]
     fn validate_field_completeness(
         &self,
         provided_fields: &serde_json::Map<String, JsonValue>,

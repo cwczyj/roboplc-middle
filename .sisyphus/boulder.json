@@ -10,7 +10,12 @@
     "ses_2bcac5ce6ffeUOCadJ0oMvccq9",
     "ses_2bca52a63ffedbjWNITSRvXtq0",
     "ses_2bc917d62ffegbtd0btoCfaiwI",
-    "ses_2bc917d68ffeUTRy1NRjvFQIXr"
+    "ses_2bc917d68ffeUTRy1NRjvFQIXr",
+    "ses_2bc8764dfffeg0WacDawRnFo3R",
+    "ses_2bc83843dffePEMqLGL7q8uMTj",
+    "ses_2bc838304ffeJ6aDu5C6TTHyK7",
+    "ses_2bc838300ffe43yTtjNE73Uqwb",
+    "ses_2bc7f2b74ffels8QAr9wByCuhN"
   ],
   "plan_name": "modbus-parallel-access",
   "agent": "atlas",
@@ -41,6 +46,15 @@
       "agent": "Sisyphus-Junior",
       "category": "deep",
       "updated_at": "2026-03-31T10:25:50.724Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**计划合规审计** — `oracle`",
+      "session_id": "ses_2bc7f2b74ffels8QAr9wByCuhN",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-03-31T10:49:29.772Z"
     }
   }
 }
