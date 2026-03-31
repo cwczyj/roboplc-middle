@@ -499,4 +499,49 @@ mod tests {
             "Guard should release capacity even on panic"
         );
     }
+
+    #[test]
+    fn test_cas_retry_limit() {
+        use std::sync::Arc;
+
+        let queue = Arc::new(OperationQueue::<i32>::new(1));
+        let mut success_count = 0;
+
+        for _ in 0..1000 {
+            if queue.try_acquire_atomic() {
+                success_count += 1;
+            }
+        }
+
+        assert_eq!(success_count, 1);
+    }
+
+    #[test]
+    fn test_concurrent_push_with_limit() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let queue = Arc::new(std::sync::Mutex::new(OperationQueue::<TestOperation>::new(
+            3,
+        )));
+        let mut handles = vec![];
+
+        for i in 0..100 {
+            let q = queue.clone();
+            handles.push(thread::spawn(move || {
+                let mut q = q.lock().unwrap();
+                q.push(TestOperation {
+                    id: i as u32,
+                    data: i,
+                });
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let q = queue.lock().unwrap();
+        assert_eq!(q.pending_count(), 100);
+    }
 }
