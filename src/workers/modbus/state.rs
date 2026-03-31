@@ -4,6 +4,7 @@ use crate::config::Device;
 use crate::{DeviceEvent, DeviceEventType, Message, Variables};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
@@ -18,7 +19,7 @@ pub struct ModbusWorkerState {
     connection_state: ConnectionState,
     backoff: Backoff,
     timeout_handler: TimeoutHandler,
-    operation_queue: OperationQueue<()>,
+    operation_queue: Arc<Mutex<OperationQueue<()>>>,
 }
 
 impl ModbusWorkerState {
@@ -30,7 +31,7 @@ impl ModbusWorkerState {
             connection_state: ConnectionState::Disconnected,
             backoff: Backoff::new(),
             timeout_handler: TimeoutHandler::new(),
-            operation_queue: OperationQueue::new(max_concurrent_ops),
+            operation_queue: Arc::new(Mutex::new(OperationQueue::new(max_concurrent_ops))),
         }
     }
 
@@ -194,24 +195,33 @@ impl ModbusWorkerState {
     /// Try to acquire capacity for a new operation.
     /// Returns true if capacity is available, false if at max concurrent ops.
     pub fn try_acquire_operation(&mut self) -> bool {
-        self.operation_queue.push(());
-        self.operation_queue.pop_if_ready().is_some()
+        let mut queue = self.operation_queue.lock().unwrap();
+        queue.push(());
+        queue.pop_if_ready().is_some()
     }
 
     /// Thread-safe capacity acquisition for async operations.
     /// Atomically checks and increments capacity without requiring mutable access.
     pub fn try_acquire_operation_atomic(&self) -> bool {
-        self.operation_queue.try_acquire_atomic()
+        let queue = self.operation_queue.lock().unwrap();
+        queue.try_acquire_atomic()
     }
 
     /// Mark an operation as complete, releasing capacity (thread-safe).
     pub fn complete_operation(&self) {
-        self.operation_queue.complete();
+        let queue = self.operation_queue.lock().unwrap();
+        queue.complete();
+    }
+
+    /// Get a clone of the operation queue Arc for use in async contexts.
+    pub fn operation_queue_arc(&self) -> Arc<Mutex<OperationQueue<()>>> {
+        self.operation_queue.clone()
     }
 
     /// Get current in-flight operation count (for monitoring).
     pub fn in_flight_count(&self) -> usize {
-        self.operation_queue.in_flight_count()
+        let queue = self.operation_queue.lock().unwrap();
+        queue.in_flight_count()
     }
 
     /// Execute operation directly on connection pool (bypasses ensure_connected).

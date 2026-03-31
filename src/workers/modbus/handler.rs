@@ -7,7 +7,6 @@ use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use super::{
@@ -20,15 +19,10 @@ use crate::workers::modbus::state::ModbusWorkerState;
 pub struct DeviceControlHandler {
     state: ModbusWorkerState,
     runtime: Option<tokio::runtime::Runtime>,
-    in_flight: Arc<AtomicUsize>,
-    max_in_flight: usize,
 }
-
-const MAX_CAS_RETRIES: usize = 100;
 
 impl DeviceControlHandler {
     pub fn new(device: Device) -> Self {
-        let max_in_flight = device.max_concurrent_ops as usize;
         Self {
             state: ModbusWorkerState::new(device),
             runtime: Some(tokio::runtime::Builder::new_multi_thread()
@@ -36,47 +30,15 @@ impl DeviceControlHandler {
                 .enable_all()
                 .build()
                 .expect("Failed to create tokio runtime for async operations")),
-            in_flight: Arc::new(AtomicUsize::new(0)),
-            max_in_flight,
         }
     }
 
     fn try_acquire(&self) -> bool {
-        for attempt in 0..MAX_CAS_RETRIES {
-            let current = self.in_flight.load(Ordering::Acquire);
-            if current >= self.max_in_flight {
-                return false;
-            }
-            if self.in_flight.compare_exchange(
-                current, current + 1,
-                Ordering::AcqRel, Ordering::Acquire
-            ).is_ok() {
-                return true;
-            }
-            if attempt > 10 {
-                std::hint::spin_loop();
-            }
-        }
-        tracing::debug!("try_acquire failed after {} CAS attempts", MAX_CAS_RETRIES);
-        false
+        self.state.try_acquire_operation_atomic()
     }
 
     fn complete(&self) {
-        for attempt in 0..MAX_CAS_RETRIES {
-            let current = self.in_flight.load(Ordering::Acquire);
-            if current == 0 {
-                break;
-            }
-            if self.in_flight.compare_exchange(
-                current, current - 1,
-                Ordering::AcqRel, Ordering::Acquire
-            ).is_ok() {
-                break;
-            }
-            if attempt > 10 {
-                std::hint::spin_loop();
-            }
-        }
+        self.state.complete_operation();
     }
 
     pub fn device(&self) -> &Device {
@@ -320,11 +282,13 @@ impl DeviceControlHandler {
                     .resolve_signal_group(&group_name)
                     .map(|g| (g.fields.clone(), self.state.device().byte_order.clone()));
 
-                let in_flight = self.in_flight.clone();
+                let op_queue = self.state.operation_queue_arc();
 
                 self.runtime.as_ref().expect("Runtime should exist").spawn(async move {
                     let _guard = OperationGuard::new(move || {
-                        in_flight.fetch_sub(1, Ordering::SeqCst);
+                        if let Ok(queue) = op_queue.lock() {
+                            queue.complete();
+                        }
                     });
 
                     // Wrap the core operation logic with catch_unwind for panic recovery
