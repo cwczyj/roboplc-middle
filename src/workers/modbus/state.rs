@@ -7,14 +7,14 @@ use serde_json::Value as JsonValue;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
-    Backoff, ConnectionState, ModbusClient, ModbusOp, OperationQueue, OperationResult,
+    Backoff, ConnectionState, ModbusConnectionPool, ModbusOp, OperationQueue, OperationResult,
     TimeoutHandler,
 };
 
 /// ModbusWorker state struct
 pub struct ModbusWorkerState {
     device: Device,
-    client: Option<ModbusClient>,
+    connection_pool: Option<ModbusConnectionPool>,
     connection_state: ConnectionState,
     last_communication: Option<SystemTime>,
     backoff: Backoff,
@@ -28,7 +28,7 @@ impl ModbusWorkerState {
         let max_concurrent_ops = device.max_concurrent_ops as usize;
         Self {
             device,
-            client: None,
+            connection_pool: None,
             connection_state: ConnectionState::Disconnected,
             last_communication: None,
             backoff: Backoff::new(),
@@ -54,24 +54,29 @@ impl ModbusWorkerState {
         // Keep other device properties like id, address, etc. unchanged
     }
 
-    pub fn client(&self) -> Option<&ModbusClient> {
-        self.client.as_ref()
-    }
-
-    pub fn client_mut(&mut self) -> Option<&mut ModbusClient> {
-        self.client.as_mut()
-    }
-
     pub fn connection_state(&self) -> ConnectionState {
         self.connection_state
     }
 
-    fn connect(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
+    fn connect_pool(&mut self, timeout: Duration) -> Result<(), Box<dyn std::error::Error>> {
         let endpoint = format!("{}:{}", self.device.address, self.device.port);
-        let mut client = ModbusClient::new(endpoint, self.device.unit_id);
-        client.connect(timeout)?;
-        self.client = Some(client);
-        tracing::info!(device_id = %self.device.id, "Connected to Modbus device");
+        let pool_size = self.device.max_concurrent_ops as usize;
+        // Cap pool size at 5 to avoid too many connections
+        let capped_pool_size = pool_size.min(5);
+
+        // Try to establish a single connection first to verify device is reachable
+        // This uses the same timeout approach as before for validation
+        let test_client = roboplc::comm::tcp::connect(&endpoint, timeout)?;
+        test_client.connect()?;
+
+        // If we can connect, create the pool (pool connections are lazy)
+        let pool = ModbusConnectionPool::new(endpoint, self.device.unit_id, capped_pool_size);
+        self.connection_pool = Some(pool);
+        tracing::info!(
+            device_id = %self.device.id,
+            pool_size = capped_pool_size,
+            "Created Modbus connection pool"
+        );
         Ok(())
     }
 
@@ -149,10 +154,10 @@ impl ModbusWorkerState {
     pub fn ensure_connected(&mut self, context: &Context<Message, Variables>) -> bool {
         let timeout = self.timeout_handler.timeout();
 
-        if self.client.is_none() {
+        if self.connection_pool.is_none() {
             self.update_connection_state(ConnectionState::Connecting, context);
-            if let Err(e) = self.connect(timeout) {
-                tracing::warn!(device_id = %self.device.id, error = %e, "Connection failed");
+            if let Err(e) = self.connect_pool(timeout) {
+                tracing::warn!(device_id = %self.device.id, error = %e, "Connection pool creation failed");
                 self.timeout_handler.on_timeout();
                 if self.timeout_handler.is_at_max() {
                     tracing::warn!(
@@ -172,33 +177,32 @@ impl ModbusWorkerState {
         true
     }
 
-    /// Execute operation with connection probe
+    /// Execute operation with connection pool
     ///
-    /// Delegates to ModbusClient's execute_operation which handles:
-    /// - Connection probing to detect stale connections
-    /// - Automatic reconnection on failure
+    /// Delegates to ModbusConnectionPool's execute_operation which handles:
+    /// - Connection acquisition from pool
+    /// - Health checking (age, is_healthy flag)
+    /// - Connection release back to pool
     pub fn execute_operation(
         &mut self,
         context: &Context<Message, Variables>,
         modbus_op: &ModbusOp,
     ) -> OperationResult {
-        // Ensure we have a connection before executing
         if !self.ensure_connected(context) {
             return OperationResult {
                 success: false,
                 data: JsonValue::Null,
-                error: Some("Failed to establish connection".to_string()),
+                error: Some("Failed to establish connection pool".to_string()),
             };
         }
 
-        // Client's execute_operation will probe connection and reconnect if needed
-        if let Some(client) = &mut self.client {
-            client.execute_operation(modbus_op)
+        if let Some(pool) = &mut self.connection_pool {
+            pool.execute_operation(modbus_op)
         } else {
             OperationResult {
                 success: false,
                 data: JsonValue::Null,
-                error: Some("Client not connected".to_string()),
+                error: Some("Connection pool not available".to_string()),
             }
         }
     }

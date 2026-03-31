@@ -79,7 +79,7 @@ use std::time::Instant;
 /// Maximum pending responses for RPC handler channel.
 /// Prevents memory exhaustion when clients send requests faster than
 /// the Modbus worker can process them.
-pub const MAX_PENDING_RESPONSES: usize = 100;
+pub const MAX_PENDING_RESPONSES: usize = 1000;
 
 /// Maximum pending heartbeat responses channel capacity.
 /// Prevents memory exhaustion when heartbeat checks pile up due to

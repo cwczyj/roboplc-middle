@@ -143,7 +143,7 @@ fn default_tcp_nodelay() -> bool {
 
 /// 默认最大并发操作数
 fn default_max_concurrent_ops() -> u8 {
-    3
+    10
 }
 
 /// 默认心跳间隔（秒）
@@ -295,7 +295,7 @@ impl SignalGroup {
 
 impl DataType {
     /// 返回该数据类型需要的寄存器数量
-    /// 
+    ///
     /// F64 需要 4 个寄存器（64 位 / 16 位 = 4）
     pub fn required_registers(&self) -> u16 {
         match self {
