@@ -1,11 +1,11 @@
-//! HeartbeatWorker - 独立心跳检测 Worker
+//! HeartbeatWorker - Independent heartbeat detection worker
 //!
-//! 职责：
-//! - 定期检查所有设备是否在线
-//! - 通过发送 GetStatus 请求复用 ModbusWorker 的连接
-//! - 广播 DeviceHeartbeat 消息（包含真实延迟）
-//! - 记录延迟到 latency_samples
-//! - 更新设备状态到共享变量
+//! Responsibilities:
+//! - Periodically check if all devices are online
+//! - Reuse ModbusWorker connections by sending GetStatus requests
+//! - Broadcast DeviceHeartbeat messages (including actual latency)
+//! - Record latency to latency_samples
+//! - Update device status to shared variables
 
 use crate::config::Config;
 use crate::hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT};
@@ -16,24 +16,24 @@ use roboplc::time::interval;
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// 心跳检测 Worker
+/// Heartbeat detection worker
 ///
-/// 通过发送 GetStatus 请求来检测设备是否在线，
-/// 复用 ModbusWorker 已建立的连接。
+/// Detects whether a device is online by sending GetStatus requests,
+/// reusing the already established connections from ModbusWorker.
 #[derive(WorkerOpts)]
 #[worker_opts(name = "heartbeat", cpu = 2, scheduling = "fifo", priority = 70)]
 pub struct HeartbeatWorker {
     config: Config,
-    /// 下一个心跳检查的设备索引（轮询）
+    /// Next device index for heartbeat check (round-robin)
     current_device_index: usize,
-    /// 全局心跳间隔（秒）- 取所有设备的最小值
+    /// Global heartbeat interval (seconds) - minimum of all devices
     heartbeat_interval_sec: u32,
-    /// 心跳超时（秒）- 等待响应的最大时间
+    /// Heartbeat timeout (seconds) - maximum time to wait for response
     heartbeat_timeout_sec: u32,
 }
 
 impl HeartbeatWorker {
-    /// 创建新的 HeartbeatWorker
+    /// Create new HeartbeatWorker
     pub fn new(config: Config) -> Self {
         let heartbeat_interval_sec = config
             .devices
@@ -50,9 +50,9 @@ impl HeartbeatWorker {
         }
     }
 
-    /// 发送心跳请求并等待响应
+    /// Send heartbeat request and wait for response
     ///
-    /// 返回：(是否在线, 延迟微秒)
+    /// Returns: (whether online, latency in microseconds)
     fn ping_device(&self, device_id: &str, context: &Context<Message, Variables>) -> (bool, u64) {
         let start = SystemTime::now();
         let correlation_id = next_correlation_id();
@@ -95,7 +95,7 @@ impl HeartbeatWorker {
         }
     }
 
-    /// 更新设备状态到共享变量
+    /// Update device status to shared variables
     fn update_device_status(
         &self,
         device_id: &str,

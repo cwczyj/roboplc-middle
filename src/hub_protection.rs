@@ -66,7 +66,7 @@ pub fn send_to_hub_with_protection(
             let _ = send_thread.join();
             return Ok(());
         }
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::yield_now();
     }
 
     // Mark as timed out so the thread knows
