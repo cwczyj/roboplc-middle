@@ -47,9 +47,12 @@
 pub mod config;
 pub mod correlation;
 pub mod data_conversion;
+pub mod hub_protection;
 pub mod messages;
 
 pub mod workers;
+
+pub use hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT};
 
 pub use correlation::next_correlation_id;
 

@@ -1,4 +1,8 @@
-use crate::{config::Config, Message, Variables};
+use crate::{
+    config::Config,
+    hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT},
+    Message, Variables,
+};
 use notify::{RecursiveMode, Watcher};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
@@ -91,9 +95,15 @@ impl Worker<Message, Variables> for ConfigLoader {
 
                     match self.reload_config() {
                         Ok(Some((config_json, changed_paths))) => {
-                            context.hub().send(Message::ConfigUpdate {
-                                config: config_json,
-                            });
+                            if let Err(e) = send_to_hub_with_protection(
+                                context.hub(),
+                                Message::ConfigUpdate {
+                                    config: config_json,
+                                },
+                                DEFAULT_HUB_SEND_TIMEOUT,
+                            ) {
+                                tracing::warn!(error = %e, "Failed to broadcast config update");
+                            }
                             tracing::info!(
                                 config_path = %self.config_path,
                                 changed_fields = ?changed_paths,

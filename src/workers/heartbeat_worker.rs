@@ -8,6 +8,7 @@
 //! - 更新设备状态到共享变量
 
 use crate::config::Config;
+use crate::hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT};
 use crate::next_correlation_id;
 use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
 use roboplc::controller::prelude::*;
@@ -57,13 +58,20 @@ impl HeartbeatWorker {
 
         let (tx, rx) = mpsc::sync_channel(crate::MAX_PENDING_HEARTBEATS);
 
-        context.hub().send(Message::DeviceControl {
-            device_id: device_id.to_string(),
-            operation: crate::messages::Operation::GetStatus,
-            params: serde_json::json!({}),
-            correlation_id,
-            respond_to: Some(tx),
-        });
+        if let Err(e) = send_to_hub_with_protection(
+            context.hub(),
+            Message::DeviceControl {
+                device_id: device_id.to_string(),
+                operation: crate::messages::Operation::GetStatus,
+                params: serde_json::json!({}),
+                correlation_id,
+                respond_to: Some(tx),
+            },
+            DEFAULT_HUB_SEND_TIMEOUT,
+        ) {
+            tracing::warn!(error = %e, device_id = %device_id, "Failed to send heartbeat request");
+            return (false, 0);
+        }
 
         let timeout = Duration::from_secs(self.heartbeat_timeout_sec as u64);
         match rx.recv_timeout(timeout) {
@@ -147,11 +155,17 @@ impl HeartbeatWorker {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        let _ = context.hub().send(Message::DeviceHeartbeat {
-            device_id: device_id.to_string(),
-            timestamp_ms,
-            latency_us,
-        });
+        if let Err(e) = send_to_hub_with_protection(
+            context.hub(),
+            Message::DeviceHeartbeat {
+                device_id: device_id.to_string(),
+                timestamp_ms,
+                latency_us,
+            },
+            DEFAULT_HUB_SEND_TIMEOUT,
+        ) {
+            tracing::warn!(error = %e, device_id = %device_id, "Failed to send heartbeat message");
+        }
 
         if connected && latency_us > 0 {
             let sample = LatencySample {

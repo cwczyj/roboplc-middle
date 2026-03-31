@@ -1,6 +1,7 @@
 //! DeviceControl message handler for ModbusWorker
 
 use crate::config::Device;
+use crate::hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT};
 use crate::messages::Operation;
 use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
@@ -205,13 +206,19 @@ impl DeviceControlHandler {
             if let Some(ref sender) = respond_to {
                 let _ = sender.send((success, data, error));
             } else {
-                context.hub().send(Message::DeviceResponse {
-                    device_id: device_id.clone(),
-                    success,
-                    data,
-                    error,
-                    correlation_id,
-                });
+                if let Err(e) = send_to_hub_with_protection(
+                    context.hub(),
+                    Message::DeviceResponse {
+                        device_id: device_id.clone(),
+                        success,
+                        data,
+                        error,
+                        correlation_id,
+                    },
+                    DEFAULT_HUB_SEND_TIMEOUT,
+                ) {
+                    tracing::warn!(error = %e, device_id = %device_id, "Failed to send device response via Hub");
+                }
             }
         };
 
