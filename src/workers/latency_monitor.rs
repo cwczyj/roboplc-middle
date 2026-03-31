@@ -106,7 +106,7 @@ impl LatencyMonitor {
     ) -> Option<DeviceEvent> {
         let stats = self
             .latency_stats
-            .entry(device_id.to_string())
+            .entry(String::from(device_id))
             .or_insert_with(LatencyStats::new);
 
         let anomaly_threshold = stats.anomaly_threshold();
@@ -151,12 +151,12 @@ impl Worker<Message, Variables> for LatencyMonitor {
                     latency_us,
                     timestamp_ms,
                 };
-                if !context.variables().latency_samples.force_push(sample) {
-                    tracing::warn!(
-                        device_id = %device_id,
-                        "Latency samples buffer full, oldest sample dropped"
-                    );
-                }
+                // if !context.variables().latency_samples.force_push(sample) {
+                //     tracing::warn!(
+                //         device_id = %device_id,
+                //         "Latency samples buffer full, oldest sample dropped"
+                //     );
+                // }
 
                 if let Some(event) =
                     self.process_latency_sample(&device_id, latency_us, timestamp_ms)
