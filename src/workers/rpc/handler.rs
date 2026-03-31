@@ -9,6 +9,7 @@
 // - 直接在 send_device_control 中发送到 Hub 并等待响应
 // - 每个请求只占用 1 个 blocking thread (之前是 2 个)
 
+use crate::hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT};
 use crate::messages::{DeviceResponseData, Message, Operation};
 use crate::next_correlation_id;
 
@@ -17,9 +18,7 @@ use roboplc::prelude::Hub;
 use serde_json::Value as JsonValue;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::sync_channel;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use super::types::{RpcMethod, RpcResultType};
@@ -40,49 +39,6 @@ pub struct RpcHandler {
 impl RpcHandler {
     pub fn new(device_ids: Vec<String>, hub: Hub<Message>) -> Self {
         Self { device_ids, hub }
-    }
-
-    /// Send message to Hub with deadlock prevention.
-    ///
-    /// RoboPLC's Hub.send() is blocking and uses bounded internal channels
-    /// (default capacity 1024). When Hub's queue is full, send() blocks.
-    /// If RPC Worker blocks in send(), it cannot enter recv_timeout(),
-    /// creating a deadlock with ModbusWorker waiting for response channel.
-    ///
-    /// This method spawns a separate thread for the blocking send operation,
-    /// allowing the main thread to timeout if send doesn't complete quickly.
-    /// This prevents indefinite blocking and allows graceful error return.
-    fn send_to_hub_with_protection(
-        &self,
-        message: Message,
-        timeout: Duration,
-    ) -> Result<(), String> {
-        let hub = self.hub.clone();
-        let send_completed = Arc::new(AtomicBool::new(false));
-        let send_completed_clone = send_completed.clone();
-
-        let send_thread = std::thread::spawn(move || {
-            hub.send(message);
-            send_completed_clone.store(true, Ordering::SeqCst);
-        });
-
-        let start = std::time::Instant::now();
-        while start.elapsed() < timeout {
-            if send_completed.load(Ordering::SeqCst) {
-                // Send completed successfully
-                // Join the thread to ensure proper cleanup
-                let _ = send_thread.join();
-                return Ok(());
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-
-        tracing::warn!(
-            timeout_ms = timeout.as_millis(),
-            "Hub send timeout - system may be overloaded"
-        );
-
-        Err("Hub send timeout - system overloaded".to_string())
     }
 }
 
@@ -174,7 +130,7 @@ impl RpcHandler {
 
         // DEADLOCK FIX: Use protected send with timeout
         // Prevents blocking indefinitely if Hub's internal queue is full
-        if let Err(e) = self.send_to_hub_with_protection(message, Duration::from_millis(500)) {
+        if let Err(e) = send_to_hub_with_protection(&self.hub, message, DEFAULT_HUB_SEND_TIMEOUT) {
             tracing::warn!(
                 correlation_id,
                 error = %e,

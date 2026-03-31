@@ -1,7 +1,7 @@
 use roboplc::prelude::Hub;
+use parking_lot_rt::RwLock;
 use std::sync::Arc;
 use std::collections::HashSet;
-use std::sync::Mutex;
 
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
@@ -12,26 +12,26 @@ use super::handler::RpcHandler;
 use super::connection::handle_connection;
 
 struct ActiveConnections {
-    tasks: Mutex<HashSet<tokio::task::Id>>,
+    tasks: RwLock<HashSet<tokio::task::Id>>,
 }
 
 impl ActiveConnections {
     fn new() -> Self {
         Self {
-            tasks: Mutex::new(HashSet::new()),
+            tasks: RwLock::new(HashSet::new()),
         }
     }
 
     fn add(&self, id: tokio::task::Id) {
-        self.tasks.lock().unwrap().insert(id);
+        self.tasks.write().insert(id);
     }
 
     fn remove(&self, id: tokio::task::Id) {
-        self.tasks.lock().unwrap().remove(&id);
+        self.tasks.write().remove(&id);
     }
 
     fn count(&self) -> usize {
-        self.tasks.lock().unwrap().len()
+        self.tasks.read().len()
     }
 }
 
