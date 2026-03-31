@@ -1,7 +1,7 @@
 //! Type definitions for Modbus worker
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, SystemTime};
 
 // ==================== 常量定义 ====================
@@ -12,13 +12,13 @@ const BACKOFF_BASE_MS: u64 = 100;
 const BACKOFF_MAX_MS: u64 = 30000;
 
 // 全局事务计数器
-static TRANSACTION_COUNTER: AtomicU16 = AtomicU16::new(0);
+static TRANSACTION_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 // ==================== TransactionId ====================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransactionId {
-    pub id: u16,
+    pub id: u32,
     pub created_at: SystemTime,
 }
 
@@ -32,6 +32,12 @@ impl TransactionId {
 
     pub fn elapsed(&self) -> Duration {
         self.created_at.elapsed().unwrap_or(Duration::ZERO)
+    }
+}
+
+impl Default for TransactionId {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
