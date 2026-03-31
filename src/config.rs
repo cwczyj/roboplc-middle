@@ -787,4 +787,30 @@ operation_timeout_ms = 1000.5
         let result: Result<Config, _> = toml::from_str(config_str);
         assert!(result.is_err(), "Should reject float value for timeout");
     }
+
+    #[test]
+    fn test_server_runtime_config_defaults() {
+        let config_str = r#"
+            [server]
+            rpc_port = 8080
+            http_port = 8081
+        "#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        assert_eq!(config.server.rpc_worker_threads, 4);
+        assert_eq!(config.server.rpc_max_blocking_threads, 128);
+    }
+
+    #[test]
+    fn test_server_runtime_config_custom() {
+        let config_str = r#"
+            [server]
+            rpc_port = 8080
+            http_port = 8081
+            rpc_worker_threads = 8
+            rpc_max_blocking_threads = 256
+        "#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        assert_eq!(config.server.rpc_worker_threads, 8);
+        assert_eq!(config.server.rpc_max_blocking_threads, 256);
+    }
 }
