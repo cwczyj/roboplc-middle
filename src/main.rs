@@ -58,10 +58,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 设置 panic 钩子，在程序崩溃时记录日志
     roboplc::setup_panic();
 
-    // 设置模拟模式，跳过实时调度要求
-    // 在生产环境中，移除此行以使用实时调度
-    // 注意：实时调度需要 root 权限和正确的系统配置
-    // roboplc::set_simulated();
+    // Enable simulated mode (no RT scheduling) only when explicitly requested
+    // This allows RT scheduling in production by default
+    if std::env::var("ROBOPLC_SIMULATED").is_ok() {
+        roboplc::set_simulated();
+        tracing::info!("Running in simulated mode (no RT scheduling)");
+    }
 
     // 加载配置文件
     let config_path = "config.toml";

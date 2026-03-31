@@ -48,27 +48,40 @@ pub fn send_to_hub_with_protection(
     let hub = hub.clone();
     let send_completed = Arc::new(AtomicBool::new(false));
     let send_completed_clone = send_completed.clone();
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let timed_out_clone = timed_out.clone();
 
     let send_thread = std::thread::spawn(move || {
         hub.send(message);
+        // Check if caller already timed out
+        if timed_out_clone.load(Ordering::SeqCst) {
+            tracing::warn!("Hub send completed after timeout - message may be delayed");
+        }
         send_completed_clone.store(true, Ordering::SeqCst);
     });
 
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
         if send_completed.load(Ordering::SeqCst) {
-            // Send completed successfully
-            // Join the thread to ensure proper cleanup
             let _ = send_thread.join();
             return Ok(());
         }
         std::thread::sleep(Duration::from_millis(5));
     }
 
+    // Mark as timed out so the thread knows
+    timed_out.store(true, Ordering::SeqCst);
+
     tracing::warn!(
         timeout_ms = timeout.as_millis(),
         "Hub send timeout - system may be overloaded"
     );
+
+    // Try non-blocking join if thread finished
+    if send_thread.is_finished() {
+        let _ = send_thread.join();
+    }
+    // Otherwise thread completes on its own (detach behavior is acceptable here)
 
     Err("Hub send timeout - system overloaded".to_string())
 }
