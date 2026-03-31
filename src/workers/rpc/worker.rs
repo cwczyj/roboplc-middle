@@ -13,6 +13,7 @@ use crate::Variables;
 use roboplc::controller::prelude::*;
 
 use tokio::sync::oneshot;
+use std::thread::JoinHandle;
 
 use super::server::run_async_server;
 
@@ -41,7 +42,7 @@ impl Worker<Message, Variables> for RpcWorker {
         let bind_addr_clone = bind_addr.clone();
         let device_ids_clone = device_ids.clone();
 
-        std::thread::spawn(move || {
+        let runtime_handle: JoinHandle<()> = std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(4)
                 .max_blocking_threads(128)
@@ -49,11 +50,13 @@ impl Worker<Message, Variables> for RpcWorker {
                 .build()
                 .expect("RpcWorker: failed to create Tokio runtime");
 
-            rt.block_on(async move {
-                if let Err(e) = run_async_server(bind_addr_clone, device_ids_clone, hub, shutdown_rx).await {
-                    tracing::error!(error = %e, "RPC Server error");
-                }
-            });
+            if let Err(e) = rt.block_on(async move {
+                run_async_server(bind_addr_clone, device_ids_clone, hub, shutdown_rx).await
+            }) {
+                tracing::error!(error = %e, "RPC Server error");
+            }
+
+            rt.shutdown_timeout(std::time::Duration::from_secs(5));
         });
 
         tracing::info!("RPC Server Worker started");
@@ -62,9 +65,15 @@ impl Worker<Message, Variables> for RpcWorker {
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
+        tracing::info!("RPC Server Worker shutting down...");
+
         let _ = shutdown_tx.send(());
 
-        tracing::info!("RPC Server Worker stopped");
+        match runtime_handle.join() {
+            Ok(()) => tracing::info!("RPC Server Worker stopped gracefully"),
+            Err(_) => tracing::warn!("RPC Server thread panicked"),
+        }
+
         Ok(())
     }
 }

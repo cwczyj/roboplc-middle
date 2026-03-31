@@ -1,20 +1,39 @@
-// =============================================================================
-// RPC Worker - 异步服务器实现
-// =============================================================================
-// Wave 3 重构: 简化服务器主循环
-// - 移除 device_control_rx 分支 (请求直接在 handler.rs 处理)
-// - 移除 pending 超时清理 (请求在同一 blocking thread 中完成)
-// - 简化参数列表
-
 use roboplc::prelude::Hub;
 use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::Mutex;
 
 use tokio::sync::oneshot;
+use tokio::task::JoinSet;
 
 use crate::messages::Message;
 
 use super::handler::RpcHandler;
 use super::connection::handle_connection;
+
+struct ActiveConnections {
+    tasks: Mutex<HashSet<tokio::task::Id>>,
+}
+
+impl ActiveConnections {
+    fn new() -> Self {
+        Self {
+            tasks: Mutex::new(HashSet::new()),
+        }
+    }
+
+    fn add(&self, id: tokio::task::Id) {
+        self.tasks.lock().unwrap().insert(id);
+    }
+
+    fn remove(&self, id: tokio::task::Id) {
+        self.tasks.lock().unwrap().remove(&id);
+    }
+
+    fn count(&self) -> usize {
+        self.tasks.lock().unwrap().len()
+    }
+}
 
 pub async fn run_async_server(
     bind_addr: String,
@@ -27,6 +46,9 @@ pub async fn run_async_server(
     tracing::info!("RPC Server started on {}", bind_addr);
 
     let handler = Arc::new(RpcHandler::new(device_ids, hub.clone()));
+    let connections = Arc::new(ActiveConnections::new());
+
+    let mut task_set: JoinSet<()> = JoinSet::new();
 
     loop {
         tokio::select! {
@@ -34,11 +56,22 @@ pub async fn run_async_server(
                 match accept_result {
                     Ok((stream, addr)) => {
                         let handler = handler.clone();
+                        let connections = connections.clone();
                         tracing::info!(addr = %addr, "Accepted new RPC connection");
-                        tokio::spawn(async move {
+
+                        let task = tokio::spawn(async move {
                             if let Err(e) = handle_connection(stream, addr, handler).await {
                                 tracing::debug!(addr = %addr, error = %e, "Connection error");
                             }
+                        });
+
+                        let task_id = task.id();
+                        connections.add(task_id);
+
+                        let connections_clone = connections.clone();
+                        task_set.spawn(async move {
+                            let _ = task.await;
+                            connections_clone.remove(task_id);
                         });
                     }
                     Err(e) => {
@@ -48,11 +81,39 @@ pub async fn run_async_server(
             }
 
             _ = &mut shutdown_rx => {
-                tracing::info!("Shutdown signal received, stopping RPC server");
+                tracing::info!(
+                    active_connections = connections.count(),
+                    "Shutdown signal received, draining connections..."
+                );
+
                 break;
             }
         }
     }
 
+    let drain_timeout = tokio::time::Duration::from_secs(5);
+    let drain_start = std::time::Instant::now();
+
+    while !task_set.is_empty() && drain_start.elapsed() < drain_timeout {
+        tokio::select! {
+            _ = task_set.join_next() => {
+                tracing::debug!(
+                    remaining = task_set.len(),
+                    "Connection completed during drain"
+                );
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {}
+        }
+    }
+
+    if !task_set.is_empty() {
+        tracing::warn!(
+            remaining = task_set.len(),
+            "Force-closing remaining connections after drain timeout"
+        );
+        task_set.shutdown().await;
+    }
+
+    tracing::info!("RPC Server stopped");
     Ok(())
 }
