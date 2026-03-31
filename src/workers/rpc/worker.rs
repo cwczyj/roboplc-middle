@@ -47,12 +47,18 @@ impl Worker<Message, Variables> for RpcWorker {
             let worker_threads = config_clone.server.rpc_worker_threads;
             let max_blocking_threads = config_clone.server.rpc_max_blocking_threads;
 
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            let rt = match tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(worker_threads)
                 .max_blocking_threads(max_blocking_threads)
                 .enable_all()
                 .build()
-                .expect("RpcWorker: failed to create Tokio runtime");
+            {
+                Ok(runtime) => runtime,
+                Err(e) => {
+                    tracing::error!("RpcWorker: failed to create Tokio runtime: {}", e);
+                    return;
+                }
+            };
 
             if let Err(e) = rt.block_on(async move {
                 run_async_server(bind_addr_clone, device_ids_clone, hub, shutdown_rx).await
