@@ -142,6 +142,8 @@ pub struct OperationQueue<T> {
 }
 
 impl<T> OperationQueue<T> {
+    const MAX_CAS_RETRIES: usize = 100;
+
     pub fn new(max_in_flight: usize) -> Self {
         Self {
             pending: VecDeque::new(),
@@ -155,39 +157,48 @@ impl<T> OperationQueue<T> {
     }
 
     pub fn pop_if_ready(&mut self) -> Option<T> {
-        loop {
-            let current = self.in_flight.load(Ordering::SeqCst);
+        for attempt in 0..Self::MAX_CAS_RETRIES {
+            let current = self.in_flight.load(Ordering::Acquire);
             if current >= self.max_in_flight {
                 return None;
             }
             if self
                 .in_flight
-                .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(current, current + 1, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
                 if let Some(op) = self.pending.pop_front() {
                     return Some(op);
                 }
-                self.in_flight.fetch_sub(1, Ordering::SeqCst);
+                self.in_flight.fetch_sub(1, Ordering::Release);
                 return None;
             }
+            if attempt > 10 {
+                std::hint::spin_loop();
+            }
         }
+        tracing::debug!("OperationQueue::pop_if_ready CAS retried");
+        None
     }
 
     pub fn complete(&self) {
-        loop {
-            let current = self.in_flight.load(Ordering::SeqCst);
+        for attempt in 0..Self::MAX_CAS_RETRIES {
+            let current = self.in_flight.load(Ordering::Acquire);
             if current == 0 {
                 break;
             }
             if self
                 .in_flight
-                .compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(current, current - 1, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
                 break;
             }
+            if attempt > 10 {
+                std::hint::spin_loop();
+            }
         }
+        tracing::debug!("OperationQueue::complete CAS retried");
     }
 
     pub fn in_flight_count(&self) -> usize {
@@ -205,19 +216,27 @@ impl<T> OperationQueue<T> {
     /// Try to atomically acquire capacity without modifying pending queue.
     /// Returns true if capacity was acquired, false if at max capacity.
     pub fn try_acquire_atomic(&self) -> bool {
-        loop {
-            let current = self.in_flight.load(Ordering::SeqCst);
+        for attempt in 0..Self::MAX_CAS_RETRIES {
+            let current = self.in_flight.load(Ordering::Acquire);
             if current >= self.max_in_flight {
                 return false;
             }
             if self
                 .in_flight
-                .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(current, current + 1, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
                 return true;
             }
+            if attempt > 10 {
+                std::hint::spin_loop();
+            }
         }
+        tracing::debug!(
+            "OperationQueue::try_acquire_atomic CAS failed after {} attempts",
+            Self::MAX_CAS_RETRIES
+        );
+        false
     }
 }
 

@@ -3,6 +3,7 @@
 //! Implements lazy connection recovery: operations are attempted directly,
 //! and reconnection only happens when TCP connection errors are detected.
 
+use parking_lot_rt::RwLock;
 use roboplc::comm::tcp;
 use roboplc::comm::Client;
 use roboplc::io::modbus::prelude::*;
@@ -391,7 +392,7 @@ pub struct ModbusConnectionPool {
     endpoint: String,
     unit_id: u8,
     pool_size: usize,
-    available: std::sync::Mutex<VecDeque<PooledConnection>>,
+    available: RwLock<VecDeque<PooledConnection>>,
     total_created: std::sync::atomic::AtomicUsize,
 }
 
@@ -401,7 +402,7 @@ impl Clone for ModbusConnectionPool {
             endpoint: self.endpoint.clone(),
             unit_id: self.unit_id,
             pool_size: self.pool_size,
-            available: std::sync::Mutex::new(VecDeque::new()),
+            available: RwLock::new(VecDeque::new()),
             total_created: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -413,7 +414,7 @@ impl ModbusConnectionPool {
             endpoint,
             unit_id,
             pool_size,
-            available: std::sync::Mutex::new(VecDeque::new()),
+            available: RwLock::new(VecDeque::new()),
             total_created: AtomicUsize::new(0),
         }
     }
@@ -423,7 +424,7 @@ impl ModbusConnectionPool {
     }
 
     pub fn available_count(&self) -> usize {
-        self.available.lock().unwrap().len()
+        self.available.read().len()
     }
 
     pub fn total_created(&self) -> usize {
@@ -459,7 +460,7 @@ impl ModbusConnectionPool {
     /// Acquire a connection from the pool for parallel execution.
     /// Returns a connection that must be released via `release_connection`.
     pub fn acquire_connection(&self) -> Result<Client, Box<dyn std::error::Error>> {
-        let mut available = self.available.lock().unwrap();
+        let mut available = self.available.write();
         tracing::debug!(
             endpoint = %self.endpoint,
             available = available.len(),
@@ -509,7 +510,7 @@ impl ModbusConnectionPool {
             return;
         }
 
-        let mut available = self.available.lock().unwrap();
+        let mut available = self.available.write();
         if available.len() < self.pool_size {
             available.push_back(PooledConnection::new(client));
             tracing::debug!(

@@ -6,6 +6,7 @@ use crate::messages::Operation;
 use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -18,47 +19,62 @@ use crate::workers::modbus::state::ModbusWorkerState;
 /// Handler for Modbus device control operations
 pub struct DeviceControlHandler {
     state: ModbusWorkerState,
-    runtime: tokio::runtime::Runtime,
+    runtime: Option<tokio::runtime::Runtime>,
     in_flight: Arc<AtomicUsize>,
     max_in_flight: usize,
 }
+
+const MAX_CAS_RETRIES: usize = 100;
 
 impl DeviceControlHandler {
     pub fn new(device: Device) -> Self {
         let max_in_flight = device.max_concurrent_ops as usize;
         Self {
             state: ModbusWorkerState::new(device),
-            runtime: tokio::runtime::Builder::new_multi_thread()
+            runtime: Some(tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(2)
                 .enable_all()
                 .build()
-                .expect("Failed to create tokio runtime for async operations"),
+                .expect("Failed to create tokio runtime for async operations")),
             in_flight: Arc::new(AtomicUsize::new(0)),
             max_in_flight,
         }
     }
 
     fn try_acquire(&self) -> bool {
-        loop {
-            let current = self.in_flight.load(Ordering::SeqCst);
+        for attempt in 0..MAX_CAS_RETRIES {
+            let current = self.in_flight.load(Ordering::Acquire);
             if current >= self.max_in_flight {
                 return false;
             }
-            if self.in_flight.compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            if self.in_flight.compare_exchange(
+                current, current + 1,
+                Ordering::AcqRel, Ordering::Acquire
+            ).is_ok() {
                 return true;
             }
+            if attempt > 10 {
+                std::hint::spin_loop();
+            }
         }
+        tracing::debug!("try_acquire failed after {} CAS attempts", MAX_CAS_RETRIES);
+        false
     }
 
     fn complete(&self) {
-        // Saturating decrement - prevent counter from going below 0
-        loop {
-            let current = self.in_flight.load(Ordering::SeqCst);
+        for attempt in 0..MAX_CAS_RETRIES {
+            let current = self.in_flight.load(Ordering::Acquire);
             if current == 0 {
-                break; // Already at 0, don't decrement
-            }
-            if self.in_flight.compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
                 break;
+            }
+            if self.in_flight.compare_exchange(
+                current, current - 1,
+                Ordering::AcqRel, Ordering::Acquire
+            ).is_ok() {
+                break;
+            }
+            if attempt > 10 {
+                std::hint::spin_loop();
             }
         }
     }
@@ -306,40 +322,47 @@ impl DeviceControlHandler {
 
                 let in_flight = self.in_flight.clone();
 
-                self.runtime.spawn(async move {
+                self.runtime.as_ref().expect("Runtime should exist").spawn(async move {
                     let _guard = OperationGuard::new(move || {
                         in_flight.fetch_sub(1, Ordering::SeqCst);
                     });
 
-                    let Some(modbus_op) = modbus_op else {
-                        send_response(
-                            false,
-                            JsonValue::Null,
-                            Some(format!("Invalid signal group: {}", group_name)),
-                        );
-                        return;
-                    };
+                    // Wrap the core operation logic with catch_unwind for panic recovery
+                    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        let Some(modbus_op) = modbus_op else {
+                            return Err((
+                                false,
+                                JsonValue::Null,
+                                Some(format!("Invalid signal group: {}", group_name)),
+                            ));
+                        };
 
-                    let result = pool.execute_operation(&modbus_op);
+                        let result = pool.execute_operation(&modbus_op);
 
-                    let response_data = if let Some((fields, byte_order)) = group_data {
-                        if result.success {
-                            if let Some(values) = result.data.get("values").and_then(|v| v.as_array()) {
-                                let registers: Vec<u16> = values
-                                    .iter()
-                                    .filter_map(|v| v.as_u64().map(|n| n as u16))
-                                    .collect();
+                        let response_data = if let Some((fields, byte_order)) = group_data {
+                            if result.success {
+                                if let Some(values) = result.data.get("values").and_then(|v| v.as_array()) {
+                                    let registers: Vec<u16> = values
+                                        .iter()
+                                        .filter_map(|v| v.as_u64().map(|n| n as u16))
+                                        .collect();
 
-                                let parsed_fields =
-                                    parse_signal_group_fields(&registers, &fields, byte_order);
+                                    let parsed_fields =
+                                        parse_signal_group_fields(&registers, &fields, byte_order);
 
-                                serde_json::json!({
-                                    "group_name": group_name,
-                                    "result": {
-                                        "fields": parsed_fields,
-                                        "latency_us": result.data.get("latency_us").unwrap_or(&JsonValue::Null)
-                                    }
-                                })
+                                    serde_json::json!({
+                                        "group_name": group_name,
+                                        "result": {
+                                            "fields": parsed_fields,
+                                            "latency_us": result.data.get("latency_us").unwrap_or(&JsonValue::Null)
+                                        }
+                                    })
+                                } else {
+                                    serde_json::json!({
+                                        "group_name": group_name,
+                                        "result": result.data
+                                    })
+                                }
                             } else {
                                 serde_json::json!({
                                     "group_name": group_name,
@@ -351,15 +374,27 @@ impl DeviceControlHandler {
                                 "group_name": group_name,
                                 "result": result.data
                             })
-                        }
-                    } else {
-                        serde_json::json!({
-                            "group_name": group_name,
-                            "result": result.data
-                        })
-                    };
+                        };
 
-                    send_response(result.success, response_data, result.error);
+                        Ok((result.success, response_data, result.error))
+                    }));
+
+                    match result {
+                        Ok(Ok((success, data, error))) => {
+                            send_response(success, data, error);
+                        }
+                        Ok(Err((success, data, error))) => {
+                            send_response(success, data, error);
+                        }
+                        Err(panic_info) => {
+                            tracing::error!("Modbus operation panicked: {:?}", panic_info);
+                            send_response(
+                                false,
+                                JsonValue::Null,
+                                Some("Internal server error".to_string()),
+                            );
+                        }
+                    }
                 });
             }
         }
@@ -382,6 +417,15 @@ impl DeviceControlHandler {
             Ok(())
         } else {
             Err(missing)
+        }
+    }
+}
+
+impl Drop for DeviceControlHandler {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_timeout(std::time::Duration::from_secs(5));
+            tracing::debug!("DeviceControlHandler runtime shut down");
         }
     }
 }
