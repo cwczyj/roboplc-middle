@@ -9,7 +9,7 @@
 //! - 实现3-sigma异常检测
 //! - 发送延迟异常事件
 
-use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
+use crate::{DeviceEvent, DeviceEventType, Message, Variables};
 use roboplc::controller::prelude::*;
 use roboplc::prelude::*;
 use std::collections::{HashMap, VecDeque};
@@ -146,18 +146,6 @@ impl Worker<Message, Variables> for LatencyMonitor {
                 latency_us,
             } = msg
             {
-                let sample = LatencySample {
-                    device_id: device_id.clone(),
-                    latency_us,
-                    timestamp_ms,
-                };
-                // if !context.variables().latency_samples.force_push(sample) {
-                //     tracing::warn!(
-                //         device_id = %device_id,
-                //         "Latency samples buffer full, oldest sample dropped"
-                //     );
-                // }
-
                 if let Some(event) =
                     self.process_latency_sample(&device_id, latency_us, timestamp_ms)
                 {

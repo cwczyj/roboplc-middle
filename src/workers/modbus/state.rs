@@ -1,7 +1,7 @@
 //! ModbusWorker state management and connection handling
 
 use crate::config::Device;
-use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
+use crate::{DeviceEvent, DeviceEventType, Message, Variables};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -121,34 +121,13 @@ impl ModbusWorkerState {
         });
     }
 
-    fn record_communication_with<F>(&mut self, latency_us: u64, mut emit: F)
-    where
-        F: FnMut(LatencySample),
-    {
-        let now = SystemTime::now();
-        self.last_communication = Some(now);
-
-        let sample = LatencySample {
-            device_id: self.device.id.clone(),
-            latency_us,
-            timestamp_ms: now
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64,
-        };
-        emit(sample);
-    }
-
-    pub fn record_communication(&mut self, context: &Context<Message, Variables>, latency_us: u64) {
-        let device_id = self.device.id.clone();
-        self.record_communication_with(latency_us, |sample: LatencySample| {
-            // if !context.variables().latency_samples.force_push(sample) {
-            //     tracing::warn!(
-            //         device_id = %device_id,
-            //         "Latency samples buffer full, oldest sample dropped"
-            //     );
-            // }
-        });
+    pub fn record_communication(
+        &mut self,
+        _context: &Context<Message, Variables>,
+        _latency_us: u64,
+    ) {
+        // Latency is now tracked via HeartbeatWorker -> LatencyMonitor
+        // See: DeviceHeartbeat message flow
     }
 
     pub fn ensure_connected(&mut self, context: &Context<Message, Variables>) -> bool {

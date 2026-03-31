@@ -235,9 +235,6 @@ pub struct Variables {
     /// 每个设备的状态（随机访问，并发读取）
     pub device_states: Arc<DashMap<String, DeviceStatus>>,
 
-    /// 延迟监控样本（批量统计数据）
-    pub latency_samples: DataBuffer<LatencySample>,
-
     /// 最近的 Modbus 事务（环形缓冲区，用于日志）
     pub modbus_transactions: DataBuffer<ModbusLogEntry>,
 
@@ -253,7 +250,6 @@ impl std::fmt::Debug for Variables {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Variables")
             .field("device_states", &self.device_states)
-            .field("latency_samples_len", &self.latency_samples.len())
             .field("modbus_transactions_len", &self.modbus_transactions.len())
             .field("device_events_len", &self.device_events.len())
             .finish()
@@ -265,7 +261,6 @@ impl Default for Variables {
     fn default() -> Self {
         Self {
             device_states: Arc::new(DashMap::new()),
-            latency_samples: DataBuffer::bounded(500),
             modbus_transactions: DataBuffer::bounded(500),
             device_events: DataBuffer::bounded(500),
         }

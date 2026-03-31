@@ -10,7 +10,7 @@
 use crate::config::Config;
 use crate::hub_protection::{send_to_hub_with_protection, DEFAULT_HUB_SEND_TIMEOUT};
 use crate::next_correlation_id;
-use crate::{DeviceEvent, DeviceEventType, LatencySample, Message, Variables};
+use crate::{DeviceEvent, DeviceEventType, Message, Variables};
 use roboplc::controller::prelude::*;
 use roboplc::time::interval;
 use std::sync::mpsc;
@@ -168,19 +168,7 @@ impl HeartbeatWorker {
             tracing::warn!(error = %e, device_id = %device_id, "Failed to send heartbeat message");
         }
 
-        if connected && latency_us > 0 {
-            let sample = LatencySample {
-                device_id: String::from(device_id),
-                latency_us,
-                timestamp_ms,
-            };
-            // if !context.variables().latency_samples.force_push(sample) {
-            //     tracing::warn!(
-            //         device_id = %device_id,
-            //         "Latency samples buffer full, oldest sample dropped"
-            //     );
-            // }
-        }
+        // LatencySample is recorded by LatencyMonitor via DeviceHeartbeat message
 
         tracing::trace!(
             device_id = %device_id,
