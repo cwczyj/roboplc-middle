@@ -13,6 +13,7 @@
 use crate::config::{ByteOrder, DataType, FieldMapping};
 use crate::data_conversion::DataTypeConverter;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// Parsed field value from a SignalGroup
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -69,7 +70,7 @@ pub fn encode_single_field(
     // Convert value to bytes using DataTypeConverter
     let bytes = <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
         value,
-        field.data_type.clone(),
+        field.data_type,
         byte_order,
     )?;
 
@@ -103,14 +104,42 @@ pub fn encode_fields_for_partial_write(
     field_mappings: &[FieldMapping],
     byte_order: ByteOrder,
 ) -> Vec<EncodedField> {
+    // Pre-build HashMap for O(1) lookup instead of O(n) linear search per field
+    let field_map: HashMap<&str, &FieldMapping> = field_mappings
+        .iter()
+        .map(|f| (f.name.as_str(), f))
+        .collect();
+
     let mut results = Vec::with_capacity(fields_data.len());
 
     for (field_name, field_value) in fields_data {
-        if let Some(encoded) =
-            encode_single_field(field_name, field_value, field_mappings, byte_order.clone())
-        {
-            results.push(encoded);
-        }
+        let field = match field_map.get(field_name.as_str()) {
+            Some(f) => *f,
+            None => continue,
+        };
+
+        let value = match field_value.as_f64() {
+            Some(v) => v,
+            None => continue,
+        };
+
+        let bytes =
+            match <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
+                value,
+                field.data_type,
+                byte_order,
+            ) {
+                Some(b) => b,
+                None => continue,
+            };
+
+        let registers = bytes_to_registers(&bytes);
+
+        results.push(EncodedField {
+            name: field_name.clone(),
+            offset: field.offset,
+            registers,
+        });
     }
 
     results
@@ -194,14 +223,14 @@ pub fn parse_signal_group_fields(
         if let Some(value) =
             <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::from_bytes(
                 &bytes,
-                field.data_type.clone(),
-                byte_order.clone(),
+                field.data_type,
+                byte_order,
             )
         {
             results.push(ParsedField {
                 name: field.name.clone(),
                 value,
-                data_type: field.data_type.clone(),
+                data_type: field.data_type,
             });
         }
     }
@@ -231,35 +260,31 @@ pub fn encode_fields_to_registers(
     register_count: u16,
     byte_order: ByteOrder,
 ) -> Option<Vec<u16>> {
-    // Initialize register array with zeros
+    // Pre-build HashMap for O(1) lookup instead of O(n) linear search per field
+    let field_map: HashMap<&str, &FieldMapping> =
+        fields.iter().map(|f| (f.name.as_str(), f)).collect();
+
     let mut registers = vec![0u16; register_count as usize];
 
-    // Process each field in the input data
     for (field_name, field_value) in fields_data {
-        // Find the field mapping
-        let field = fields.iter().find(|f| &f.name == field_name)?;
+        let field = field_map.get(field_name.as_str())?;
 
-        // Convert JSON value to f64
         let value = field_value.as_f64()?;
 
-        // Convert value to bytes using DataTypeConverter
         let bytes =
             <crate::data_conversion::DefaultDataTypeConverter as DataTypeConverter>::to_bytes(
                 value,
-                field.data_type.clone(),
-                byte_order.clone(),
+                field.data_type,
+                byte_order,
             )?;
 
-        // Calculate required registers
         let required_registers = field.data_type.required_registers();
         let end_offset = field.offset.saturating_add(required_registers);
 
-        // Check bounds
         if end_offset > register_count {
             return None;
         }
 
-        // Convert bytes to registers and place at offset
         let regs = bytes_to_registers(&bytes);
         for (i, reg) in regs.into_iter().enumerate() {
             registers[field.offset as usize + i] = reg;
@@ -271,7 +296,7 @@ pub fn encode_fields_to_registers(
 
 /// Convert bytes to u16 register values
 fn bytes_to_registers(bytes: &[u8]) -> Vec<u16> {
-    let mut registers = Vec::new();
+    let mut registers = Vec::with_capacity(bytes.len().div_ceil(2));
     let mut iter = bytes.iter();
 
     while let Some(&high) = iter.next() {

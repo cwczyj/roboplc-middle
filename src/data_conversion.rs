@@ -75,7 +75,12 @@ impl DataTypeConverter for DefaultDataTypeConverter {
             return None;
         }
 
-        let ordered = convert_byte_order(data, byte_order);
+        let ordered: Vec<u8> = if byte_order == ByteOrder::BigEndian {
+            data.to_vec()
+        } else {
+            convert_byte_order(data, byte_order)
+        };
+
         match data_type {
             DataType::U16 => Some(u16::from_be_bytes([ordered[0], ordered[1]]) as f64),
             DataType::U32 => {
@@ -107,7 +112,12 @@ impl DataTypeConverter for DefaultDataTypeConverter {
             DataType::Bool => Some(vec![(value != 0.0) as u8]),
         }?;
 
-        Some(convert_byte_order(&canonical, byte_order))
+        // BigEndian: no conversion needed, return canonical directly
+        if byte_order == ByteOrder::BigEndian {
+            Some(canonical)
+        } else {
+            Some(convert_byte_order(&canonical, byte_order))
+        }
     }
 }
 
