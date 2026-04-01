@@ -212,14 +212,10 @@ impl Worker<Message, Variables> for HeartbeatWorker {
                 Duration::from_secs(self.heartbeat_interval_sec as u64 / device_count as u64);
             let target_interval = per_device_interval.max(base_interval);
 
-            if target_interval > base_interval {
-                let skip_ticks = (target_interval.as_millis() / base_interval.as_millis()) as usize;
-                for _ in 1..skip_ticks {
-                    if !context.is_online() {
-                        break;
-                    }
-                    std::thread::yield_now();
-                }
+            // Precise sleep instead of busy polling with yield_now()
+            let sleep_duration = target_interval.saturating_sub(base_interval);
+            if sleep_duration > Duration::ZERO {
+                std::thread::sleep(sleep_duration);
             }
         }
 

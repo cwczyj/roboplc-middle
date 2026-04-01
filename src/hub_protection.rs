@@ -5,8 +5,7 @@
 //! to process send operations with timeout protection, preventing thread starvation
 //! under high load.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -27,7 +26,7 @@ const HUB_SEND_POOL_SIZE: usize = 4;
 const HUB_SEND_QUEUE_CAPACITY: usize = 128;
 
 /// Task for Hub send operations
-type HubSendTask = (Hub<Message>, Message, Arc<AtomicBool>);
+type HubSendTask = (Hub<Message>, Message, mpsc::Sender<()>);
 
 /// Global Hub send thread pool
 static HUB_SEND_POOL: Lazy<HubSendPool> = Lazy::new(HubSendPool::new);
@@ -47,9 +46,10 @@ impl HubSendPool {
             let rx = receiver.clone();
             thread::spawn(move || {
                 tracing::debug!(worker_id = worker_id, "Hub send worker thread started");
-                while let Ok((hub, message, completed)) = rx.recv() {
+                while let Ok((hub, message, completed_tx)) = rx.recv() {
                     hub.send(message);
-                    completed.store(true, Ordering::SeqCst);
+                    // Send completion signal, ignore errors (receiver may have timed out)
+                    let _ = completed_tx.send(());
                 }
                 tracing::debug!(worker_id = worker_id, "Hub send worker thread exiting");
             });
@@ -69,10 +69,10 @@ impl HubSendPool {
         &self,
         hub: Hub<Message>,
         message: Message,
-        completed: Arc<AtomicBool>,
+        completed_tx: mpsc::Sender<()>,
     ) -> Result<(), String> {
         self.sender
-            .try_send((hub, message, completed))
+            .try_send((hub, message, completed_tx))
             .map_err(|e| format!("Failed to submit Hub send task: {:?}", e))?;
         Ok(())
     }
@@ -108,29 +108,21 @@ pub fn send_to_hub_with_protection(
     timeout: Duration,
 ) -> Result<(), String> {
     let hub = hub.clone();
-    let send_completed = Arc::new(AtomicBool::new(false));
-    let send_completed_check = send_completed.clone();
+    let (completed_tx, completed_rx) = mpsc::channel();
 
     // Submit task to thread pool
     HUB_SEND_POOL
-        .submit(hub, message, send_completed)
+        .submit(hub, message, completed_tx)
         .map_err(|e| format!("Hub send queue full: {}", e))?;
 
-    // Wait for completion with timeout
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if send_completed_check.load(Ordering::SeqCst) {
-            return Ok(());
-        }
-        thread::yield_now();
-    }
-
-    tracing::warn!(
-        timeout_ms = timeout.as_millis(),
-        "Hub send timeout - system may be overloaded"
-    );
-
-    Err("Hub send timeout - system overloaded".to_string())
+    completed_rx.recv_timeout(timeout).map_err(|e| {
+        tracing::warn!(
+            timeout_ms = timeout.as_millis(),
+            error = ?e,
+            "Hub send timeout - system may be overloaded"
+        );
+        "Hub send timeout - system overloaded".to_string()
+    })
 }
 
 #[cfg(test)]

@@ -22,7 +22,8 @@ const MIN_ANOMALY_SAMPLES: usize = 10;
 struct LatencyStats {
     samples: VecDeque<u64>,
     mean: f64,
-    variance: f64,
+    count: f64,
+    m2: f64,
 }
 
 impl LatencyStats {
@@ -30,42 +31,49 @@ impl LatencyStats {
         Self {
             samples: VecDeque::with_capacity(LATENCY_WINDOW),
             mean: 0.0,
-            variance: 0.0,
+            count: 0.0,
+            m2: 0.0,
         }
+    }
+
+    /// Reverse Welford update when removing a sample from the window
+    fn remove_sample_welford(&mut self, old: u64) {
+        if self.count <= 1.0 {
+            self.count = 0.0;
+            self.mean = 0.0;
+            self.m2 = 0.0;
+            return;
+        }
+        let x = old as f64;
+        let delta = x - self.mean;
+        self.count -= 1.0;
+        self.mean -= delta / self.count;
+        let delta2 = x - self.mean;
+        self.m2 -= delta * delta2;
     }
 
     fn add_sample(&mut self, latency_us: u64) {
         if self.samples.len() >= LATENCY_WINDOW {
-            self.samples.pop_front();
+            if let Some(old) = self.samples.pop_front() {
+                self.remove_sample_welford(old);
+            }
         }
         self.samples.push_back(latency_us);
-        self.recalculate();
-    }
 
-    fn recalculate(&mut self) {
-        if self.samples.is_empty() {
-            self.mean = 0.0;
-            self.variance = 0.0;
-            return;
-        }
-
-        let n = self.samples.len() as f64;
-        self.mean = self.samples.iter().sum::<u64>() as f64 / n;
-
-        let sum_sq: f64 = self
-            .samples
-            .iter()
-            .map(|&x| {
-                let diff = x as f64 - self.mean;
-                diff * diff
-            })
-            .sum();
-
-        self.variance = sum_sq / n;
+        let x = latency_us as f64;
+        self.count += 1.0;
+        let delta = x - self.mean;
+        self.mean += delta / self.count;
+        let delta2 = x - self.mean;
+        self.m2 += delta * delta2;
     }
 
     fn std_dev(&self) -> f64 {
-        self.variance.sqrt()
+        if self.count > 0.0 {
+            (self.m2 / self.count).sqrt()
+        } else {
+            0.0
+        }
     }
 
     fn anomaly_threshold(&self) -> Option<f64> {

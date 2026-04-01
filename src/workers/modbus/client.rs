@@ -381,6 +381,7 @@ impl PooledConnection {
     }
 }
 
+#[cfg(test)]
 const POOL_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 const POOL_CONNECTION_TIMEOUT: Duration = DEFAULT_CONNECT_TIMEOUT;
 
@@ -476,65 +477,40 @@ impl ModbusConnectionPool {
             "Attempting to acquire connection from pool"
         );
 
-        let should_pop_immediately = {
-            let available = self.available.read();
-            if let Some(front) = available.front() {
-                let age = front.age();
-                let is_healthy = front.is_healthy;
-                is_healthy && age < self.health_check_interval
-            } else {
-                false
-            }
-        };
+        let mut available = self.available.write();
 
-        if should_pop_immediately {
-            let mut available = self.available.write();
-            if let Some(pooled) = available.pop_front() {
-                if pooled.is_healthy && pooled.age() < self.health_check_interval {
-                    tracing::debug!(
-                        endpoint = %self.endpoint,
-                        available_after = available.len(),
-                        "Connection acquired from pool"
-                    );
-                    return Ok(pooled.client);
-                }
-                self.total_created.fetch_sub(1, Ordering::Relaxed);
+        // Clean up unhealthy or expired connections at the front
+        let mut dropped_count = 0;
+        while let Some(front) = available.front() {
+            if front.is_healthy && front.age() < self.health_check_interval {
+                break;
             }
+            available.pop_front();
+            self.total_created.fetch_sub(1, Ordering::Relaxed);
+            dropped_count += 1;
         }
 
-        {
-            let mut available = self.available.write();
-            let mut dropped_count = 0;
-
-            while let Some(pooled) = available.front() {
-                let should_drop = !pooled.is_healthy || pooled.age() >= self.health_check_interval;
-                if should_drop {
-                    let _ = available.pop_front();
-                    self.total_created.fetch_sub(1, Ordering::Relaxed);
-                    dropped_count += 1;
-                } else {
-                    break;
-                }
-            }
-
-            if dropped_count > 0 {
-                tracing::debug!(
-                    dropped_count = dropped_count,
-                    remaining = available.len(),
-                    "Cleaned up stale connections from pool"
-                );
-            }
-
-            if let Some(pooled) = available.pop_front() {
-                tracing::debug!(
-                    endpoint = %self.endpoint,
-                    available_after = available.len(),
-                    "Connection acquired from pool after cleanup"
-                );
-                return Ok(pooled.client);
-            }
+        if dropped_count > 0 {
+            tracing::debug!(
+                endpoint = %self.endpoint,
+                dropped_count = dropped_count,
+                remaining = available.len(),
+                "Cleaned up stale connections from pool"
+            );
         }
 
+        // Try to acquire a healthy connection
+        if let Some(pooled) = available.pop_front() {
+            tracing::debug!(
+                endpoint = %self.endpoint,
+                available_after = available.len(),
+                "Connection acquired from pool"
+            );
+            return Ok(pooled.client);
+        }
+
+        // Pool is empty, create new connection
+        drop(available);
         tracing::debug!(
             endpoint = %self.endpoint,
             "Pool empty, creating new connection"
@@ -866,7 +842,12 @@ mod pool_tests {
 
     #[test]
     fn pool_new_creates_empty_pool() {
-        let pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool.pool_size(), 3);
         assert_eq!(pool.available_count(), 0);
         assert_eq!(pool.total_created(), 0);
@@ -874,26 +855,51 @@ mod pool_tests {
 
     #[test]
     fn pool_new_with_different_sizes() {
-        let pool1 = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 1, POOL_HEALTH_CHECK_INTERVAL);
+        let pool1 = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            1,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool1.pool_size(), 1);
 
-        let pool5 = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 5, POOL_HEALTH_CHECK_INTERVAL);
+        let pool5 = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            5,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool5.pool_size(), 5);
 
-        let pool10 = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 10, POOL_HEALTH_CHECK_INTERVAL);
+        let pool10 = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            10,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool10.pool_size(), 10);
     }
 
     #[test]
     fn pool_acquire_connection_fails_without_server() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         let result = pool.acquire_connection();
         assert!(result.is_err());
     }
 
     #[test]
     fn pool_execute_operation_fails_without_server() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         let op = ModbusOp::ReadHolding {
             address: 100,
             count: 10,
@@ -905,7 +911,12 @@ mod pool_tests {
 
     #[test]
     fn pool_release_connection_discards_unhealthy() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool.available_count(), 0);
 
         pool.release_connection(
@@ -919,7 +930,12 @@ mod pool_tests {
 
     #[test]
     fn pool_release_connection_respects_pool_size_limit() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 2, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            2,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
 
         for _ in 0..3 {
             pool.release_connection(
@@ -942,7 +958,12 @@ mod pool_tests {
 
     #[test]
     fn pool_discards_old_connections() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool.available_count(), 0);
         let result = pool.acquire_connection();
         assert!(
@@ -953,7 +974,12 @@ mod pool_tests {
 
     #[test]
     fn pool_failed_operation_does_not_return_to_pool() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         let op = ModbusOp::ReadHolding {
             address: 100,
             count: 10,
@@ -974,7 +1000,12 @@ mod pool_tests {
 
     #[test]
     fn pool_tracks_total_created_correctly() {
-        let mut pool = ModbusConnectionPool::new("127.0.0.1:502".to_string(), 1, 3, POOL_HEALTH_CHECK_INTERVAL);
+        let mut pool = ModbusConnectionPool::new(
+            "127.0.0.1:502".to_string(),
+            1,
+            3,
+            POOL_HEALTH_CHECK_INTERVAL,
+        );
         assert_eq!(pool.total_created(), 0, "No connections created initially");
         let _ = pool.acquire_connection();
         assert_eq!(
