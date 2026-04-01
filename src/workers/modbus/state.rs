@@ -15,7 +15,7 @@ use super::{
 /// ModbusWorker state struct
 pub struct ModbusWorkerState {
     device: Device,
-    connection_pool: Option<ModbusConnectionPool>,
+    connection_pool: Option<Arc<ModbusConnectionPool>>,
     connection_state: ConnectionState,
     backoff: Backoff,
     timeout_handler: TimeoutHandler,
@@ -76,7 +76,7 @@ impl ModbusWorkerState {
             pool_size,
             health_check_interval,
         );
-        self.connection_pool = Some(pool);
+        self.connection_pool = Some(Arc::new(pool));
         tracing::info!(
             device_id = %self.device.id,
             pool_size = pool_size,
@@ -194,9 +194,9 @@ impl ModbusWorkerState {
     }
 
     /// Get reference to connection pool for async execution.
-    /// Returns None if not connected.
-    pub fn get_pool(&self) -> Option<&ModbusConnectionPool> {
-        self.connection_pool.as_ref()
+    /// Returns Arc to the pool for sharing across async tasks.
+    pub fn get_pool(&self) -> Option<Arc<ModbusConnectionPool>> {
+        self.connection_pool.clone()
     }
 
     /// Try to acquire capacity for a new operation.

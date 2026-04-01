@@ -1,11 +1,33 @@
 [server]
 rpc_port = 8080
 http_port = 8081
+rpc_worker_threads = 4         # 异步运行时工作线程数
+rpc_max_blocking_threads = 128 # 阻塞操作最大线程数
 
 [logging]
 level = "info"
 file = ""
 daily_rotation = false
+
+[timeouts]
+# Modbus TCP 连接超时（毫秒）
+connect_timeout_ms = 200
+
+# Modbus 操作超时（毫秒）
+operation_timeout_ms = 1000
+
+# 最大操作超时（毫秒）- 自适应超时上限
+max_operation_timeout_ms = 30000
+
+# Hub 消息发送超时（毫秒）
+hub_send_timeout_ms = 500
+
+# 心跳检测超时（毫秒）
+heartbeat_timeout_ms = 1000
+
+# 连接池健康检查间隔（秒）- 连接在池中超过此时间将被视为过期并重新创建
+# 默认 30 秒，根据网络条件调整
+pool_health_check_interval_sec = 30
 
 # 配置连接到 Mock Modbus 服务器
 [[devices]]
@@ -17,7 +39,8 @@ unit_id = 1
 addressing_mode = "zero_based"
 byte_order = "little_endian_byte_swap"
 tcp_nodelay = true
-max_concurrent_ops = 3
+max_concurrent_ops = 5
+max_pool_size = 10
 heartbeat_interval_sec = 30
 
 # 信号组 1: 电机控制

@@ -60,10 +60,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Enable simulated mode (no RT scheduling) only when explicitly requested
     // This allows RT scheduling in production by default
-    if std::env::var("ROBOPLC_SIMULATED").is_ok() {
-        roboplc::set_simulated();
-        tracing::info!("Running in simulated mode (no RT scheduling)");
-    }
+    // if std::env::var("ROBOPLC_SIMULATED").is_ok() {
+    //     roboplc::set_simulated();
+    //     tracing::info!("Running in simulated mode (no RT scheduling)");
+    // }
+
+    roboplc::set_simulated();
 
     // 加载配置文件
     let config_path = "config.toml";

@@ -7,7 +7,6 @@ use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
 use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
 
 use super::{
     encode_fields_to_registers, parse_register_address, parse_signal_group_fields,
@@ -238,7 +237,7 @@ impl DeviceControlHandler {
                 }
 
                 let pool = match self.state.get_pool() {
-                    Some(p) => Arc::new(p.clone()),
+                    Some(p) => p,
                     None => {
                         self.complete();
                         send_response(

@@ -43,7 +43,7 @@ pub async fn run_async_server(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
-    tracing::info!("RPC Server started on {}", bind_addr);
+    tracing::debug!("RPC Server started on {}", bind_addr);
 
     let handler = Arc::new(RpcHandler::new(device_ids, hub.clone()));
     let connections = Arc::new(ActiveConnections::new());
@@ -57,7 +57,7 @@ pub async fn run_async_server(
                     Ok((stream, addr)) => {
                         let handler = handler.clone();
                         let connections = connections.clone();
-                        tracing::info!(addr = %addr, "Accepted new RPC connection");
+                        tracing::debug!(addr = %addr, "Accepted new RPC connection");
 
                         let task = tokio::spawn(async move {
                             if let Err(e) = handle_connection(stream, addr, handler).await {
