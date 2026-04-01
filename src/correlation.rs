@@ -46,7 +46,7 @@ static GLOBAL_CORRELATION_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// assert!(id2 > id1);
 /// ```
 pub fn next_correlation_id() -> u64 {
-    GLOBAL_CORRELATION_COUNTER.fetch_add(1, Ordering::SeqCst)
+    GLOBAL_CORRELATION_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
 #[cfg(test)]

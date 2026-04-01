@@ -2,9 +2,10 @@
 
 use crate::config::Device;
 use crate::{DeviceEvent, DeviceEventType, Message, Variables};
+use parking_lot_rt::Mutex;
 use roboplc::controller::prelude::*;
 use serde_json::Value as JsonValue;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
@@ -202,7 +203,7 @@ impl ModbusWorkerState {
     /// Try to acquire capacity for a new operation.
     /// Returns true if capacity is available, false if at max concurrent ops.
     pub fn try_acquire_operation(&mut self) -> bool {
-        let mut queue = self.operation_queue.lock().unwrap();
+        let mut queue = self.operation_queue.lock();
         queue.push(());
         queue.pop_if_ready().is_some()
     }
@@ -210,13 +211,13 @@ impl ModbusWorkerState {
     /// Thread-safe capacity acquisition for async operations.
     /// Atomically checks and increments capacity without requiring mutable access.
     pub fn try_acquire_operation_atomic(&self) -> bool {
-        let queue = self.operation_queue.lock().unwrap();
+        let queue = self.operation_queue.lock();
         queue.try_acquire_atomic()
     }
 
     /// Mark an operation as complete, releasing capacity (thread-safe).
     pub fn complete_operation(&self) {
-        let queue = self.operation_queue.lock().unwrap();
+        let queue = self.operation_queue.lock();
         queue.complete();
     }
 
@@ -227,7 +228,7 @@ impl ModbusWorkerState {
 
     /// Get current in-flight operation count (for monitoring).
     pub fn in_flight_count(&self) -> usize {
-        let queue = self.operation_queue.lock().unwrap();
+        let queue = self.operation_queue.lock();
         queue.in_flight_count()
     }
 

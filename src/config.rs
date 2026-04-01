@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -320,7 +321,7 @@ pub enum AddressingMode {
 /// 字节序
 ///
 /// 定义多字节数据的字节排列顺序。
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ByteOrder {
     /// 大端序（高位在前）
@@ -386,8 +387,8 @@ pub struct SignalGroup {
     pub register_address: String,
     /// 寄存器数量
     pub register_count: u16,
-    /// 字段映射列表
-    pub fields: Vec<FieldMapping>,
+    /// 字段映射列表（使用 Arc 避免热路径克隆）
+    pub fields: Arc<Vec<FieldMapping>>,
 }
 
 /// 字段映射
@@ -410,7 +411,7 @@ impl SignalGroup {
 
         let mut seen_fields = HashSet::new();
 
-        for field in &self.fields {
+        for field in self.fields.iter() {
             if !seen_fields.insert(&field.name) {
                 return Err(format!(
                     "Duplicate field name '{}' in signal group '{}'",
@@ -450,7 +451,7 @@ impl DataType {
 ///
 /// 定义寄存器中存储的数据类型。
 /// F64 需要 4 个连续的 16 位寄存器（64 位 = 4 * 16 位）
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DataType {
     /// 无符号 16 位整数

@@ -24,7 +24,6 @@
 use crate::config::Config;
 use crate::{Message, Variables};
 use roboplc::controller::prelude::*;
-use roboplc::prelude::*;
 use std::collections::HashMap;
 use std::time;
 
@@ -64,13 +63,6 @@ impl DeviceManager {
 
 impl Worker<Message, Variables> for DeviceManager {
     fn run(&mut self, context: &Context<Message, Variables>) -> WResult {
-        let client = context.hub().register(
-            "device_manager",
-            // DeviceManager doesn't route messages anymore - ModbusWorker uses respond_to channel directly.
-            // Subscribe to DeviceControl but don't forward to avoid the infinite loop.
-            event_matches!(Message::DeviceControl { .. }),
-        )?;
-
         tracing::info!(
             "Device Manager started, managing {} devices",
             self.config.devices.len()
@@ -78,10 +70,8 @@ impl Worker<Message, Variables> for DeviceManager {
 
         self.register_devices(context);
 
-        for msg in client {
-            // DeviceManager receives messages but doesn't process them.
-            // ModbusWorker handles operations directly via respond_to channel.
-            let _ = msg;
+        while context.is_online() {
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         tracing::info!("Device Manager stopped");

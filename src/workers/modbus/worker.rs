@@ -158,6 +158,7 @@ mod tests {
     use crate::config::{DeviceType, SignalGroup};
     use crate::workers::modbus::{parse_register_address, RegisterType};
     use crate::ConnectionState;
+    use std::sync::Arc;
 
     fn test_device() -> crate::config::Device {
         crate::config::Device {
@@ -250,7 +251,7 @@ mod tests {
                     description: "New test group".to_string(),
                     register_address: "h0".to_string(),
                     register_count: 10,
-                    fields: vec![],
+                    fields: Arc::new(vec![]),
                 }],
             }],
             server: Default::default(),

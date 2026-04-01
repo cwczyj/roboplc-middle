@@ -118,7 +118,7 @@ impl DeviceControlHandler {
                                 fields_data,
                                 &group.fields,
                                 group.register_count,
-                                self.state.device().byte_order.clone(),
+                                self.state.device().byte_order,
                             )?;
                             regs.iter().map(|&v| v != 0).collect()
                         } else if let Some(raw_values) =
@@ -152,7 +152,7 @@ impl DeviceControlHandler {
                                 fields_data,
                                 &group.fields,
                                 group.register_count,
-                                self.state.device().byte_order.clone(),
+                                self.state.device().byte_order,
                             )?
                         } else if let Some(raw_values) =
                             params.get("values").and_then(|v| v.as_array())
@@ -279,15 +279,13 @@ impl DeviceControlHandler {
 
                 let group_data = self
                     .resolve_signal_group(&group_name)
-                    .map(|g| (g.fields.clone(), self.state.device().byte_order.clone()));
+                    .map(|g| (g.fields.clone(), self.state.device().byte_order));
 
                 let op_queue = self.state.operation_queue_arc();
 
                 self.runtime.as_ref().expect("Runtime should exist").spawn(async move {
                     let _guard = OperationGuard::new(move || {
-                        if let Ok(queue) = op_queue.lock() {
-                            queue.complete();
-                        }
+                        op_queue.lock().complete();
                     });
 
                     // Wrap the core operation logic with catch_unwind for panic recovery
