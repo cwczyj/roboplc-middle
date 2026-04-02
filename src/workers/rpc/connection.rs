@@ -12,25 +12,6 @@ const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 const INITIAL_TIMEOUT_MS: u64 = 3000;
 const SUBSEQUENT_TIMEOUT_MS: u64 = 50;
 
-fn is_json_complete(payload: &[u8]) -> bool {
-    if payload.is_empty() {
-        return false;
-    }
-    
-    let end_pos = payload.iter().rposition(|&b| !b.is_ascii_whitespace());
-    if let Some(pos) = end_pos {
-        if payload[pos] == b'}' {
-            let start_pos = payload.iter().position(|&b| !b.is_ascii_whitespace());
-            return start_pos.map(|s| payload[s] == b'{').unwrap_or(false);
-        }
-        if payload[pos] == b']' {
-            let start_pos = payload.iter().position(|&b| !b.is_ascii_whitespace());
-            return start_pos.map(|s| payload[s] == b'[').unwrap_or(false);
-        }
-    }
-    false
-}
-
 pub async fn handle_connection(
     mut stream: tokio::net::TcpStream,
     addr: SocketAddr,
@@ -39,6 +20,12 @@ pub async fn handle_connection(
     let mut request_payload = Vec::new();
     let mut buf = [0u8; 4096];
     let mut first_read = true;
+
+    // Incremental JSON completeness tracking — scan only new bytes per read
+    let mut brace_depth: i32 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    let mut json_started = false;
 
     loop {
         let timeout_ms = if first_read { INITIAL_TIMEOUT_MS } else { SUBSEQUENT_TIMEOUT_MS };
@@ -54,7 +41,33 @@ pub async fn handle_connection(
                     return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Request too large"));
                 }
 
-                if is_json_complete(&request_payload) {
+                for &b in &buf[..n] {
+                    if escape {
+                        escape = false;
+                        continue;
+                    }
+                    if b == b'\\' && in_string {
+                        escape = true;
+                        continue;
+                    }
+                    if b == b'"' {
+                        in_string = !in_string;
+                        continue;
+                    }
+                    if in_string {
+                        continue;
+                    }
+                    match b {
+                        b'{' | b'[' => {
+                            brace_depth += 1;
+                            json_started = true;
+                        }
+                        b'}' | b']' => brace_depth -= 1,
+                        _ => {}
+                    }
+                }
+
+                if json_started && brace_depth == 0 {
                     tracing::debug!(addr = %addr, size = request_payload.len(), "Complete JSON detected");
                     break;
                 }

@@ -44,8 +44,7 @@ pub fn handle_device_control_request(
         );
     }
 
-    let (std_tx, std_rx): (StdSender<DeviceResponseData>, _) =
-        sync_channel(crate::MAX_PENDING_RESPONSES);
+    let (std_tx, std_rx): (StdSender<DeviceResponseData>, _) = sync_channel(1);
 
     let message = Message::DeviceControl {
         device_id: request.device_id,

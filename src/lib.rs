@@ -76,11 +76,6 @@ use std::time::Instant;
 // exhaustion under high load or slow consumer scenarios.
 // Using sync_channel instead of unbounded channel provides backpressure.
 
-/// Maximum pending responses for RPC handler channel.
-/// Prevents memory exhaustion when clients send requests faster than
-/// the Modbus worker can process them.
-pub const MAX_PENDING_RESPONSES: usize = 1000;
-
 /// Maximum pending heartbeat responses channel capacity.
 /// Prevents memory exhaustion when heartbeat checks pile up due to
 /// slow device responses or network issues.

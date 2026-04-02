@@ -117,8 +117,7 @@ impl RpcHandler {
     ) -> RpcResult<RpcResultType> {
         let correlation_id = next_correlation_id();
 
-        let (response_tx, response_rx) =
-            sync_channel::<DeviceResponseData>(crate::MAX_PENDING_RESPONSES);
+        let (response_tx, response_rx) = sync_channel::<DeviceResponseData>(1);
 
         let message = Message::DeviceControl {
             device_id: device_id.to_string(),
