@@ -218,3 +218,44 @@ offset = 3
 # I32  - 有符号 32 位整数, 占用 2 个寄存器
 # F32  - 32 位浮点数 (IEEE 754), 占用 2 个寄存器
 # Bool - 布尔值 (单个位), 占用 1 个寄存器
+
+# ==================== 流式数据配置 (Streaming Mode) ====================
+# 流式数据模式用于高频实时数据获取，支持后台轮询和缓存
+# 适用于: 关节位置、速度等需要实时监控的数据
+#
+# 使用场景:
+#   - 实时可视化监控 (>10Hz)
+#   - 高频数据记录
+#   - 低延迟读取 (<0.1ms)
+#
+# 不适用于:
+#   - 低频控制操作 (使用 JSON-RPC)
+#   - 配置变更 (使用 JSON-RPC)
+
+# 示例: 流式数据配置
+# 监控机械臂位置 (100Hz)
+[[streams]]
+device_id = "robot-arm-1"          # 设备ID，必须匹配 [[devices]] 中的 id
+signal_group = "position"          # 信号组名称
+poll_interval_ms = 10              # 轮询间隔: 10ms (100Hz)
+enabled = true                     # 启用此流
+
+# 监控机械臂速度 (50Hz)
+[[streams]]
+device_id = "robot-arm-1"
+signal_group = "velocity"
+poll_interval_ms = 20              # 轮询间隔: 20ms (50Hz)
+enabled = true
+
+# 监控传感器数据 (10Hz)
+[[streams]]
+device_id = "plc-1"
+signal_group = "sensor_data"
+poll_interval_ms = 100             # 轮询间隔: 100ms (10Hz)
+enabled = true
+
+# 可选: 全局流式设置
+[stream_settings]
+max_streams_per_device = 10        # 每个设备最大流数量
+default_poll_interval_ms = 100     # 默认轮询间隔
+cache_size = 1000                  # 缓存条目数限制
