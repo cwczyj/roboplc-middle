@@ -18,11 +18,13 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::sync::oneshot;
 
-use crate::{config::Config, DeviceStatus, Message, Variables};
+use crate::{config::Config, DataCache, DataCacheEntry, DeviceStatus, Message, Variables};
 
+#[derive(Clone)]
 pub struct AppState {
     pub device_states: Arc<DashMap<String, DeviceStatus>>,
     pub config: Arc<Config>,
+    pub data_cache: DataCache,
 }
 
 async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
@@ -117,6 +119,50 @@ async fn reload_config() -> Result<HttpResponse> {
     Ok(HttpResponse::Ok().json(json!({"reload": "ok"})))
 }
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const CACHE_TTL_MS: u64 = 50;
+
+async fn get_cached_data(
+    path: web::Path<(String, String)>,
+    data: web::Data<AppState>,
+) -> Result<HttpResponse> {
+    let (device_id, signal_group) = path.into_inner();
+    let cache_key = format!("{}_{}", device_id, signal_group);
+
+    match data.data_cache.get(&cache_key) {
+        Some(entry) => {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let cache_age_ms = now.saturating_sub(entry.timestamp_ms);
+            let fresh = cache_age_ms < CACHE_TTL_MS;
+
+            let body = json!({
+                "device_id": device_id,
+                "signal_group": signal_group,
+                "values": entry.values,
+                "timestamp_ms": entry.timestamp_ms,
+                "cache_age_ms": cache_age_ms,
+                "fresh": fresh,
+            });
+            Ok(HttpResponse::Ok().json(body))
+        }
+        None => {
+            let body = json!({
+                "error": format!(
+                    "Cache miss: no data found for device '{}' and signal group '{}'",
+                    device_id, signal_group
+                ),
+                "device_id": device_id,
+                "signal_group": signal_group,
+            });
+            Ok(HttpResponse::NotFound().json(body))
+        }
+    }
+}
+
 fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
@@ -124,7 +170,8 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/devices/{id}/status", web::get().to(get_device_by_id))
             .route("/health", web::get().to(get_health))
             .route("/config", web::get().to(get_config))
-            .route("/config/reload", web::post().to(reload_config)),
+            .route("/config/reload", web::post().to(reload_config))
+            .route("/cache/{device}/{group}", web::get().to(get_cached_data)),
     );
 }
 
@@ -151,6 +198,7 @@ impl Worker<Message, Variables> for HttpWorker {
         let app_state = web::Data::new(AppState {
             device_states,
             config,
+            data_cache: context.variables().data_cache.clone(),
         });
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -229,7 +277,10 @@ mod tests {
                 },
                 timeouts: Default::default(),
                 devices: vec![],
+                streams: vec![],
+                stream_settings: Default::default(),
             }),
+            data_cache: DataCache::new(),
         }
     }
 
@@ -259,7 +310,10 @@ mod tests {
                 },
                 timeouts: Default::default(),
                 devices: vec![],
+                streams: vec![],
+                stream_settings: Default::default(),
             }),
+            data_cache: DataCache::new(),
         }
     }
 
@@ -358,7 +412,10 @@ mod tests {
                 },
                 timeouts: Default::default(),
                 devices: vec![],
+                streams: vec![],
+                stream_settings: Default::default(),
             }),
+            data_cache: DataCache::new(),
         };
         let result = get_health(web::Data::new(app_state)).await;
         assert!(result.is_ok());
@@ -386,7 +443,10 @@ mod tests {
                 },
                 timeouts: Default::default(),
                 devices: vec![],
+                streams: vec![],
+                stream_settings: Default::default(),
             }),
+            data_cache: DataCache::new(),
         };
         let result = get_config(web::Data::new(app_state)).await;
         assert!(result.is_ok());
@@ -396,5 +456,77 @@ mod tests {
     async fn test_reload_config() {
         let result = reload_config().await;
         assert!(result.is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_cache_endpoint_hit() {
+        let app_state = make_app_state();
+        let cache_key = "robot-arm-1_position".to_string();
+        let entry = DataCacheEntry::new(
+            json!({"x": 100.5, "y": 200.0, "z": 50.0}),
+            1712345678901,
+            150,
+            false,
+        );
+        app_state.data_cache.set(&cache_key, entry);
+
+        let result = get_cached_data(
+            web::Path::from(("robot-arm-1".to_string(), "position".to_string())),
+            web::Data::new(app_state),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn test_cache_endpoint_miss() {
+        let app_state = make_app_state();
+
+        let result = get_cached_data(
+            web::Path::from(("unknown-device".to_string(), "unknown-group".to_string())),
+            web::Data::new(app_state),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::NOT_FOUND);
+    }
+
+    #[actix_rt::test]
+    async fn test_cache_endpoint_concurrent_requests() {
+        use futures::future::join_all;
+
+        let app_state = make_app_state();
+        let cache_key = "plc-1_temperature".to_string();
+        let entry = DataCacheEntry::new(
+            json!({"temp": 25.5, "humidity": 60.0}),
+            1712345678901,
+            100,
+            false,
+        );
+        app_state.data_cache.set(&cache_key, entry);
+
+        let mut handles = vec![];
+        for i in 0..10 {
+            let state = app_state.clone();
+            handles.push(async move {
+                get_cached_data(
+                    web::Path::from(("plc-1".to_string(), "temperature".to_string())),
+                    web::Data::new(state),
+                )
+                .await
+            });
+        }
+
+        let results = join_all(handles).await;
+        for result in results {
+            assert!(result.is_ok());
+            let response = result.unwrap();
+            assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+        }
     }
 }

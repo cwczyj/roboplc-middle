@@ -145,6 +145,19 @@ pub mod config_updater;
 /// 对应文件：`latency_monitor.rs`
 pub mod latency_monitor;
 
+/// 数据流 Worker
+///
+/// 职责：轮询信号组并广播更新
+/// 功能：
+/// - 按配置的间隔轮询信号组
+/// - 使用混合轮询策略（按间隔分组，组内并行，组间串行）
+/// - 通过发送 DeviceControl 消息到 Hub 进行轮询
+/// - 将结果缓存到 Variables.data_cache
+/// - 通过 Hub 广播 DataStreamUpdate 消息
+/// - 支持通过 ConfigUpdate 消息进行配置热重载
+/// 对应文件：`data_stream_worker.rs`
+pub mod data_stream_worker;
+
 // ========== 如何使用这些模块 ==========
 //
 // 在其他文件中导入示例：

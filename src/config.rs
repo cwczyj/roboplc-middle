@@ -33,6 +33,116 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
+/// 数据流配置
+///
+/// 定义单个数据流的配置参数。
+///
+/// # 字段说明
+///
+/// - `device_id`: 设备唯一标识符
+/// - `signal_group`: 信号组名称
+/// - `poll_interval_ms`: 轮询间隔（毫秒，范围 5-5000）
+/// - `enabled`: 是否启用此流
+/// - `priority`: 优先级（数值越小优先级越高）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StreamConfig {
+    /// 设备唯一标识符
+    pub device_id: String,
+    /// 信号组名称
+    pub signal_group: String,
+    /// 轮询间隔（毫秒，默认 100，范围 5-5000）
+    #[serde(default = "default_poll_interval_ms")]
+    pub poll_interval_ms: u32,
+    /// 是否启用此流（默认 true）
+    #[serde(default = "default_stream_enabled")]
+    pub enabled: bool,
+    /// 优先级（默认 0，数值越小优先级越高）
+    #[serde(default)]
+    pub priority: u8,
+}
+
+/// 默认轮询间隔（100ms）
+fn default_poll_interval_ms() -> u32 {
+    100
+}
+
+/// 默认流启用状态
+fn default_stream_enabled() -> bool {
+    true
+}
+
+impl StreamConfig {
+    /// 验证流配置
+    ///
+    /// 检查 poll_interval_ms 是否在 5-5000ms 范围内
+    pub fn validate(&self) -> Result<(), String> {
+        if self.poll_interval_ms < 5 || self.poll_interval_ms > 5000 {
+            return Err(format!(
+                "StreamConfig validation error: poll_interval_ms must be between 5 and 5000, got {}",
+                self.poll_interval_ms
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 流全局设置
+///
+/// 管理所有数据流的全局配置。
+///
+/// # 字段说明
+///
+/// - `max_concurrent_streams`: 最大并发流数量
+/// - `cache_ttl_ms`: 数据缓存 TTL（毫秒）
+/// - `enable_websocket`: 是否启用 WebSocket 服务器
+/// - `websocket_port`: WebSocket 服务器端口
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StreamSettings {
+    /// 最大并发流数量（默认 100）
+    #[serde(default = "default_max_concurrent_streams")]
+    pub max_concurrent_streams: u32,
+    /// 数据缓存 TTL（毫秒，默认 5000）
+    #[serde(default = "default_cache_ttl_ms")]
+    pub cache_ttl_ms: u32,
+    /// 是否启用 WebSocket 服务器（默认 true）
+    #[serde(default = "default_enable_websocket")]
+    pub enable_websocket: bool,
+    /// WebSocket 服务器端口（默认 8082）
+    #[serde(default = "default_websocket_port")]
+    pub websocket_port: u16,
+}
+
+impl Default for StreamSettings {
+    fn default() -> Self {
+        Self {
+            max_concurrent_streams: default_max_concurrent_streams(),
+            cache_ttl_ms: default_cache_ttl_ms(),
+            enable_websocket: default_enable_websocket(),
+            websocket_port: default_websocket_port(),
+        }
+    }
+}
+
+/// 默认最大并发流数量
+fn default_max_concurrent_streams() -> u32 {
+    100
+}
+
+/// 默认缓存 TTL（毫秒）
+fn default_cache_ttl_ms() -> u32 {
+    5000
+}
+
+/// 默认 WebSocket 启用状态
+fn default_enable_websocket() -> bool {
+    true
+}
+
+/// 默认 WebSocket 端口
+fn default_websocket_port() -> u16 {
+    8082
+}
+
 /// 超时配置
 ///
 /// 统一管理所有超时参数，确保系统行为一致。
@@ -160,6 +270,12 @@ pub struct Config {
     /// 设备配置列表
     #[serde(default)]
     pub devices: Vec<Device>,
+    /// 数据流配置列表
+    #[serde(default)]
+    pub streams: Vec<StreamConfig>,
+    /// 流全局设置
+    #[serde(default)]
+    pub stream_settings: StreamSettings,
 }
 
 /// 服务器配置
@@ -512,6 +628,9 @@ pub enum ConfigError {
     /// 信号组验证错误
     #[error("Signal group validation error for device '{0}': {1}")]
     SignalGroupValidation(String, String),
+    /// 流配置验证错误
+    #[error("Stream config validation error: {0}")]
+    StreamConfigValidation(String),
 }
 
 impl Config {
@@ -606,13 +725,207 @@ impl Config {
                 }
             }
         }
+
+        // Validate stream configurations
+        for stream in &self.streams {
+            if let Err(err) = stream.validate() {
+                return Err(ConfigError::StreamConfigValidation(err));
+            }
+        }
+
         Ok(())
+    }
+
+    /// 检查流配置是否发生变化
+    ///
+    /// 用于配置热重载时检测流配置的变化。
+    ///
+    /// # 参数
+    ///
+    /// - `other`: 另一个流配置列表
+    ///
+    /// # 返回值
+    ///
+    /// `true` 如果配置不同，`false` 如果相同
+    pub fn streams_differ(&self, other: &[StreamConfig]) -> bool {
+        self.streams.len() != other.len()
+            || self.streams.iter().zip(other.iter()).any(|(a, b)| a != b)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_stream_config_parsing() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[stream_settings]
+max_concurrent_streams = 100
+cache_ttl_ms = 1000
+enable_websocket = true
+websocket_port = 8082
+
+[[streams]]
+device_id = "plc-1"
+signal_group = "sensor_data"
+poll_interval_ms = 100
+enabled = true
+priority = 1
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        assert_eq!(config.streams.len(), 1);
+        let stream = &config.streams[0];
+        assert_eq!(stream.device_id, "plc-1");
+        assert_eq!(stream.signal_group, "sensor_data");
+        assert_eq!(stream.poll_interval_ms, 100);
+        assert_eq!(stream.enabled, true);
+        assert_eq!(stream.priority, 1);
+        assert_eq!(config.stream_settings.max_concurrent_streams, 100);
+        assert_eq!(config.stream_settings.cache_ttl_ms, 1000);
+        assert_eq!(config.stream_settings.enable_websocket, true);
+        assert_eq!(config.stream_settings.websocket_port, 8082);
+    }
+
+    #[test]
+    fn test_stream_config_defaults() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[[streams]]
+device_id = "plc-1"
+signal_group = "sensor_data"
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        assert_eq!(config.streams.len(), 1);
+        let stream = &config.streams[0];
+        assert_eq!(stream.poll_interval_ms, 100);
+        assert_eq!(stream.enabled, true);
+        assert_eq!(stream.priority, 0);
+    }
+
+    #[test]
+    fn test_stream_settings_defaults() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        assert_eq!(config.stream_settings.max_concurrent_streams, 100);
+        assert_eq!(config.stream_settings.cache_ttl_ms, 5000);
+        assert_eq!(config.stream_settings.enable_websocket, true);
+        assert_eq!(config.stream_settings.websocket_port, 8082);
+    }
+
+    #[test]
+    fn test_stream_config_validation() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[[streams]]
+device_id = "plc-1"
+signal_group = "sensor_data"
+poll_interval_ms = 1
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("poll_interval_ms"));
+    }
+
+    #[test]
+    fn test_stream_config_validation_max() {
+        let config_str = r#"
+[server]
+rpc_port = 8080
+http_port = 8081
+
+[logging]
+level = "info"
+file = "/var/log/roboplc-middleware.log"
+daily_rotation = true
+
+[[streams]]
+device_id = "plc-1"
+signal_group = "sensor_data"
+poll_interval_ms = 6000
+"#;
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("poll_interval_ms"));
+    }
+
+    #[test]
+    fn test_stream_config_diff_detection() {
+        let config1 = Config {
+            streams: vec![StreamConfig {
+                device_id: "plc-1".to_string(),
+                signal_group: "sensor_data".to_string(),
+                poll_interval_ms: 100,
+                enabled: true,
+                priority: 1,
+            }],
+            stream_settings: StreamSettings::default(),
+            ..Default::default()
+        };
+        let config2 = Config {
+            streams: vec![StreamConfig {
+                device_id: "plc-1".to_string(),
+                signal_group: "sensor_data".to_string(),
+                poll_interval_ms: 200,
+                enabled: true,
+                priority: 1,
+            }],
+            stream_settings: StreamSettings::default(),
+            ..Default::default()
+        };
+        assert!(config1.streams_differ(&config2.streams));
+
+        let config3 = Config {
+            streams: vec![StreamConfig {
+                device_id: "plc-1".to_string(),
+                signal_group: "sensor_data".to_string(),
+                poll_interval_ms: 100,
+                enabled: true,
+                priority: 1,
+            }],
+            stream_settings: StreamSettings::default(),
+            ..Default::default()
+        };
+        assert!(!config1.streams_differ(&config3.streams));
+    }
 
     #[test]
     fn test_default_config() {

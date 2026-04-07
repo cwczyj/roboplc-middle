@@ -66,8 +66,117 @@ pub use messages::{DeviceResponseData, Message, Operation, SystemStatusResponse}
 
 use dashmap::DashMap;
 use rtsc::buf::DataBuffer;
+use serde_json::Value as JsonValue;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+// =============================================================================
+// Data Cache Structures
+// =============================================================================
+
+/// Data cache entry for streaming data mode
+///
+/// Stores the latest polled values from a signal group along with metadata
+/// about the poll operation (timestamp, latency, error state).
+///
+/// # Fields
+///
+/// - `values`: The JSON values from the signal group read operation
+/// - `timestamp_ms`: Unix timestamp when the data was cached (milliseconds)
+/// - `latency_us`: Operation latency in microseconds
+/// - `error`: Whether the read operation encountered an error
+#[derive(Debug, Clone)]
+pub struct DataCacheEntry {
+    /// The JSON values from the signal group read operation
+    pub values: JsonValue,
+
+    /// Unix timestamp when the data was cached (milliseconds)
+    pub timestamp_ms: u64,
+
+    /// Operation latency in microseconds
+    pub latency_us: u64,
+
+    /// Whether the read operation encountered an error
+    pub error: bool,
+}
+
+impl DataCacheEntry {
+    /// Create a new cache entry
+    pub fn new(values: JsonValue, timestamp_ms: u64, latency_us: u64, error: bool) -> Self {
+        Self {
+            values,
+            timestamp_ms,
+            latency_us,
+            error,
+        }
+    }
+}
+
+/// Thread-safe in-memory data cache for streaming data mode
+///
+/// Stores the latest values for each signal group, keyed by device_id + signal_group.
+/// Uses DashMap for lock-free concurrent access.
+///
+/// Cache key format: "{device_id}_{signal_group}"
+#[derive(Debug, Clone)]
+pub struct DataCache {
+    /// Internal DashMap storing cache entries
+    inner: Arc<DashMap<String, DataCacheEntry>>,
+}
+
+impl DataCache {
+    /// Create a new empty DataCache
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// Get a cache entry by key
+    ///
+    /// Returns `Some(DataCacheEntry)` if the key exists, `None` otherwise.
+    pub fn get(&self, key: &str) -> Option<DataCacheEntry> {
+        self.inner.get(key).map(|entry| entry.clone())
+    }
+
+    /// Set a cache entry by key
+    ///
+    /// Inserts or updates the cache entry for the given key.
+    pub fn set(&self, key: &str, entry: DataCacheEntry) {
+        self.inner.insert(key.to_string(), entry);
+    }
+
+    /// Get the age of a cache entry in milliseconds
+    ///
+    /// Returns `Some(age_ms)` if the key exists, `None` otherwise.
+    /// Age is calculated from the entry's timestamp to the current time.
+    pub fn get_age(&self, key: &str) -> Option<u64> {
+        self.inner.get(key).map(|entry| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            now.saturating_sub(entry.timestamp_ms)
+        })
+    }
+
+    /// Check if a cache entry is fresh (not older than ttl_ms)
+    ///
+    /// Returns `true` if the entry exists and its age is <= ttl_ms.
+    /// Returns `false` if the entry doesn't exist or is stale.
+    pub fn is_fresh(&self, key: &str, ttl_ms: u64) -> bool {
+        match self.get_age(key) {
+            Some(age) => age <= ttl_ms,
+            None => false,
+        }
+    }
+}
+
+impl Default for DataCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // =============================================================================
 // Channel Capacity Constants
@@ -80,6 +189,10 @@ use std::time::Instant;
 /// Prevents memory exhaustion when heartbeat checks pile up due to
 /// slow device responses or network issues.
 pub const MAX_PENDING_HEARTBEATS: usize = 50;
+
+/// Maximum pending RPC response channel capacity.
+/// Prevents memory exhaustion when RPC responses pile up due to slow consumers.
+pub const MAX_PENDING_RESPONSES: usize = 1000;
 
 // =============================================================================
 // Timeout Constants
@@ -256,6 +369,9 @@ pub struct Variables {
 
     /// 设备事件流（事件流）
     pub device_events: DataBuffer<DeviceEvent>,
+
+    /// 数据缓存，用于流式数据模式
+    pub data_cache: DataCache,
 }
 
 /// 为 Variables 实现 Debug trait
@@ -268,6 +384,7 @@ impl std::fmt::Debug for Variables {
             .field("device_states", &self.device_states)
             .field("modbus_transactions_len", &self.modbus_transactions.len())
             .field("device_events_len", &self.device_events.len())
+            .field("data_cache", &self.data_cache)
             .finish()
     }
 }
@@ -279,6 +396,246 @@ impl Default for Variables {
             device_states: Arc::new(DashMap::new()),
             modbus_transactions: DataBuffer::bounded(500),
             device_events: DataBuffer::bounded(500),
+            data_cache: DataCache::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn test_data_cache_entry_new() {
+        let values = serde_json::json!({"temperature": 25.5});
+        let entry = DataCacheEntry::new(values.clone(), 1234567890, 100, false);
+
+        assert_eq!(entry.values, values);
+        assert_eq!(entry.timestamp_ms, 1234567890);
+        assert_eq!(entry.latency_us, 100);
+        assert!(!entry.error);
+    }
+
+    #[test]
+    fn test_data_cache_basic_operations() {
+        let cache = DataCache::new();
+
+        // Test get on empty cache
+        assert!(cache.get("nonexistent").is_none());
+
+        // Test set and get
+        let values = serde_json::json!({"temperature": 25.5, "humidity": 60});
+        let entry = DataCacheEntry::new(values.clone(), 1234567890, 100, false);
+        cache.set("device1_temp", entry.clone());
+
+        let retrieved = cache.get("device1_temp").unwrap();
+        assert_eq!(retrieved.values, values);
+        assert_eq!(retrieved.timestamp_ms, 1234567890);
+        assert_eq!(retrieved.latency_us, 100);
+        assert!(!retrieved.error);
+    }
+
+    #[test]
+    fn test_data_cache_update_existing() {
+        let cache = DataCache::new();
+
+        // Set initial value
+        let values1 = serde_json::json!({"value": 10});
+        let entry1 = DataCacheEntry::new(values1, 1000, 50, false);
+        cache.set("key1", entry1);
+
+        // Update with new value
+        let values2 = serde_json::json!({"value": 20});
+        let entry2 = DataCacheEntry::new(values2.clone(), 2000, 60, false);
+        cache.set("key1", entry2);
+
+        // Verify update
+        let retrieved = cache.get("key1").unwrap();
+        assert_eq!(retrieved.values, values2);
+        assert_eq!(retrieved.timestamp_ms, 2000);
+    }
+
+    #[test]
+    fn test_data_cache_is_fresh() {
+        let cache = DataCache::new();
+
+        // Get current timestamp
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        // Set entry with current timestamp
+        let values = serde_json::json!({"value": 42});
+        let entry = DataCacheEntry::new(values, now, 100, false);
+        cache.set("fresh_key", entry);
+
+        // Should be fresh with 1 second TTL
+        assert!(cache.is_fresh("fresh_key", 1000));
+
+        // Set entry with old timestamp (10 seconds ago)
+        let old_values = serde_json::json!({"value": 0});
+        let old_entry = DataCacheEntry::new(old_values, now - 10000, 100, false);
+        cache.set("stale_key", old_entry);
+
+        // Should NOT be fresh with 1 second TTL
+        assert!(!cache.is_fresh("stale_key", 1000));
+
+        // Non-existent key should not be fresh
+        assert!(!cache.is_fresh("nonexistent", 1000));
+    }
+
+    #[test]
+    fn test_data_cache_get_age() {
+        let cache = DataCache::new();
+
+        // Get current timestamp
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        // Set entry with 5 second old timestamp
+        let values = serde_json::json!({"value": 42});
+        let entry = DataCacheEntry::new(values, now - 5000, 100, false);
+        cache.set("age_key", entry);
+
+        // Get age - should be approximately 5000ms
+        let age = cache.get_age("age_key").unwrap();
+        assert!(age >= 4990 && age <= 5100, "Age should be ~5000ms, got {}", age);
+
+        // Non-existent key should return None
+        assert!(cache.get_age("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_data_cache_concurrent_access() {
+        let cache = DataCache::new();
+        let num_threads = 10;
+        let num_operations = 100;
+
+        // Spawn threads that write to the cache
+        let mut handles = vec![];
+        for i in 0..num_threads {
+            let cache_clone = cache.clone();
+            let handle = thread::spawn(move || {
+                for j in 0..num_operations {
+                    let key = format!("thread_{}_op_{}", i, j);
+                    let values = serde_json::json!({"thread": i, "op": j});
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64;
+                    let entry = DataCacheEntry::new(values, now, 10, false);
+                    cache_clone.set(&key, entry);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Spawn threads that read from the cache concurrently
+        for _ in 0..num_threads {
+            let cache_clone = cache.clone();
+            let handle = thread::spawn(move || {
+                for _ in 0..num_operations * 2 {
+                    // Try to read any key
+                    for i in 0..num_threads {
+                        for j in 0..num_operations {
+                            let key = format!("thread_{}_op_{}", i, j);
+                            let _ = cache_clone.get(&key);
+                        }
+                    }
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Verify all writes succeeded
+        for i in 0..num_threads {
+            for j in 0..num_operations {
+                let key = format!("thread_{}_op_{}", i, j);
+                let entry = cache.get(&key).expect(&format!("Key {} should exist", key));
+                assert_eq!(entry.values["thread"], i);
+                assert_eq!(entry.values["op"], j);
+            }
+        }
+    }
+
+    #[test]
+    fn test_data_cache_concurrent_same_key() {
+        let cache = DataCache::new();
+        let num_threads = 20;
+        let key = "concurrent_key";
+
+        // Spawn threads that all write to the same key
+        let mut handles = vec![];
+        for i in 0..num_threads {
+            let cache_clone = cache.clone();
+            let handle = thread::spawn(move || {
+                let values = serde_json::json!({"writer": i});
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+                let entry = DataCacheEntry::new(values, now, 10, false);
+                cache_clone.set(key, entry);
+            });
+            handles.push(handle);
+        }
+
+        // Spawn threads that read from the same key concurrently
+        for _ in 0..num_threads {
+            let cache_clone = cache.clone();
+            let handle = thread::spawn(move || {
+                for _ in 0..100 {
+                    let _ = cache_clone.get(key);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Key should exist (value is from one of the writers)
+        assert!(cache.get(key).is_some());
+    }
+
+    #[test]
+    fn test_data_cache_error_entry() {
+        let cache = DataCache::new();
+
+        let values = serde_json::json!({"error": "timeout"});
+        let entry = DataCacheEntry::new(values, 1234567890, 5000, true);
+        cache.set("error_key", entry);
+
+        let retrieved = cache.get("error_key").unwrap();
+        assert!(retrieved.error);
+        assert_eq!(retrieved.latency_us, 5000);
+    }
+
+    #[test]
+    fn test_variables_default_with_data_cache() {
+        let vars = Variables::default();
+
+        // Verify data_cache is initialized
+        let entry = DataCacheEntry::new(
+            serde_json::json!({"test": 1}),
+            1234567890,
+            100,
+            false,
+        );
+        vars.data_cache.set("test", entry);
+
+        assert!(vars.data_cache.get("test").is_some());
     }
 }

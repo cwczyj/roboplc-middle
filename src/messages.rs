@@ -48,6 +48,15 @@ pub enum Message {
     },
     #[data_delivery(always)]
     ConfigUpdate { config: String },
+    #[data_delivery(always)]
+    DataStreamUpdate {
+        device_id: String,
+        signal_group: String,
+        values: JsonValue,
+        timestamp_ms: u64,
+        latency_us: u64,
+        sequence: u64,
+    },
     SystemStatus {
         requester: String,
         respond_to: Sender<SystemStatusResponse>,
@@ -134,5 +143,37 @@ mod tests {
         };
         let cloned = msg.clone();
         assert!(matches!(cloned, Message::DeviceControl { .. }));
+    }
+
+    #[test]
+    fn test_data_stream_update_serialization() {
+        let msg = Message::DataStreamUpdate {
+            device_id: "plc-1".to_string(),
+            signal_group: "temperature_sensor".to_string(),
+            values: serde_json::json!({"temperature": 25.5, "humidity": 60}),
+            timestamp_ms: 1234567890,
+            latency_us: 150,
+            sequence: 42,
+        };
+        let cloned = msg.clone();
+        assert!(matches!(cloned, Message::DataStreamUpdate { .. }));
+
+        if let Message::DataStreamUpdate {
+            device_id,
+            signal_group,
+            values,
+            timestamp_ms,
+            latency_us,
+            sequence,
+        } = cloned
+        {
+            assert_eq!(device_id, "plc-1");
+            assert_eq!(signal_group, "temperature_sensor");
+            assert_eq!(values["temperature"], 25.5);
+            assert_eq!(values["humidity"], 60);
+            assert_eq!(timestamp_ms, 1234567890);
+            assert_eq!(latency_us, 150);
+            assert_eq!(sequence, 42);
+        }
     }
 }
