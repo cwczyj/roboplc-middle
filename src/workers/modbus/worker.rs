@@ -257,6 +257,8 @@ mod tests {
             server: Default::default(),
             logging: Default::default(),
             timeouts: Default::default(),
+            streams: vec![],
+            stream_settings: Default::default(),
         };
 
         let found = worker.find_device_config(&new_config);
@@ -302,6 +304,8 @@ mod tests {
             server: Default::default(),
             logging: Default::default(),
             timeouts: Default::default(),
+            streams: vec![],
+            stream_settings: Default::default(),
         };
 
         let found = worker.find_device_config(&new_config);

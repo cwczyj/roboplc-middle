@@ -257,6 +257,8 @@ mod tests {
                 pool_health_check_interval_sec: 30,
                 signal_groups: vec![],
             }],
+            streams: vec![],
+            stream_settings: Default::default(),
         }
     }
 
