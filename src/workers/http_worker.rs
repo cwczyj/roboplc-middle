@@ -10,21 +10,29 @@
 //! - 触发配置重载
 //! - 支持优雅关闭（3秒超时）
 
-use actix_web::{web, App, HttpResponse, HttpServer, Result};
+use actix_sse::Sse;
+use actix_web::{web, App, Either, HttpResponse, HttpServer, Result};
 use dashmap::DashMap;
 use roboplc::controller::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 use std::thread::JoinHandle;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::StreamExt as _;
 
-use crate::{config::Config, DataCache, DataCacheEntry, DeviceStatus, Message, Variables};
+use crate::{
+    config::Config, create_sse_channel, DataCache, DeviceStatus, Message, SseConnection,
+    SseConnectionRegistry, SseEventData, Variables,
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub device_states: Arc<DashMap<String, DeviceStatus>>,
     pub config: Arc<Config>,
     pub data_cache: DataCache,
+    pub sse_registry: Arc<SseConnectionRegistry>,
 }
 
 async fn get_devices(data: web::Data<AppState>) -> Result<HttpResponse> {
@@ -119,8 +127,6 @@ async fn reload_config() -> Result<HttpResponse> {
     Ok(HttpResponse::Ok().json(json!({"reload": "ok"})))
 }
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 const CACHE_TTL_MS: u64 = 50;
 
 async fn get_cached_data(
@@ -163,6 +169,81 @@ async fn get_cached_data(
     }
 }
 
+/// SSE query parameters
+#[derive(Debug, serde::Deserialize)]
+struct SseQuery {
+    device: String,
+    groups: String,
+}
+
+/// SSE endpoint: GET /api/stream?device={device_id}&groups={group1,group2}
+///
+/// Establishes a Server-Sent Events connection that streams DataStreamUpdate messages
+/// filtered by device_id and signal_groups.
+async fn sse_stream(
+    query: web::Query<SseQuery>,
+    data: web::Data<AppState>,
+) -> Either<HttpResponse, Sse<impl futures_util::Stream<Item = Result<actix_sse::Event, actix_web::Error>>>> {
+    let device_id = query.device.clone();
+    let signal_groups: Vec<String> = query
+        .groups
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if signal_groups.is_empty() {
+        return Either::Left(HttpResponse::BadRequest().json(json!({
+            "error": "No signal groups specified"
+        })));
+    }
+
+    let connected_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let (tx, rx) = create_sse_channel();
+
+    let conn = SseConnection::new(device_id.clone(), signal_groups.clone(), connected_at, tx);
+    let conn_id = data.sse_registry.register(conn);
+
+    tracing::info!(
+        device_id = %device_id,
+        signal_groups = ?signal_groups,
+        connection_id = conn_id.value(),
+        "SSE client connected"
+    );
+
+    let _sse_registry = Arc::clone(&data.sse_registry);
+    let _conn_id_for_cleanup = conn_id;
+    let stream = ReceiverStream::new(rx);
+
+    let event_stream = stream.map(move |event| {
+        match event {
+            SseEventData::JsonData(data) => {
+                let json_str = serde_json::to_string(&data).unwrap_or_default();
+                Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
+            }
+            SseEventData::Heartbeat => {
+                Ok(actix_sse::Event::Comment("heartbeat".into()))
+            }
+        }
+    });
+
+    let sse = Sse::from_stream(event_stream)
+        .with_keep_alive(std::time::Duration::from_secs(15))
+        .with_retry_duration(std::time::Duration::from_secs(5));
+
+    tracing::info!(
+        device_id = %device_id,
+        connection_id = conn_id.value(),
+        "SSE stream started"
+    );
+
+    Either::Right(sse)
+}
+
 fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
@@ -171,7 +252,8 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/health", web::get().to(get_health))
             .route("/config", web::get().to(get_config))
             .route("/config/reload", web::post().to(reload_config))
-            .route("/cache/{device}/{group}", web::get().to(get_cached_data)),
+            .route("/cache/{device}/{group}", web::get().to(get_cached_data))
+            .route("/stream", web::get().to(sse_stream)),
     );
 }
 
@@ -199,6 +281,7 @@ impl Worker<Message, Variables> for HttpWorker {
             device_states,
             config,
             data_cache: context.variables().data_cache.clone(),
+            sse_registry: context.variables().sse_registry.clone(),
         });
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -258,7 +341,7 @@ impl Worker<Message, Variables> for HttpWorker {
 mod tests {
     use super::*;
     use crate::config::{Logging, Server};
-    use crate::DeviceStatus;
+    use crate::{DataCacheEntry, DeviceStatus, Message};
     use std::time::Instant;
 
     fn make_app_state() -> AppState {
@@ -281,6 +364,7 @@ mod tests {
                 stream_settings: Default::default(),
             }),
             data_cache: DataCache::new(),
+            sse_registry: Arc::new(SseConnectionRegistry::new()),
         }
     }
 
@@ -314,6 +398,7 @@ mod tests {
                 stream_settings: Default::default(),
             }),
             data_cache: DataCache::new(),
+            sse_registry: Arc::new(SseConnectionRegistry::new()),
         }
     }
 
@@ -416,6 +501,7 @@ mod tests {
                 stream_settings: Default::default(),
             }),
             data_cache: DataCache::new(),
+            sse_registry: Arc::new(SseConnectionRegistry::new()),
         };
         let result = get_health(web::Data::new(app_state)).await;
         assert!(result.is_ok());
@@ -447,6 +533,7 @@ mod tests {
                 stream_settings: Default::default(),
             }),
             data_cache: DataCache::new(),
+            sse_registry: Arc::new(SseConnectionRegistry::new()),
         };
         let result = get_config(web::Data::new(app_state)).await;
         assert!(result.is_ok());
@@ -511,7 +598,7 @@ mod tests {
         app_state.data_cache.set(&cache_key, entry);
 
         let mut handles = vec![];
-        for i in 0..10 {
+        for _i in 0..10 {
             let state = app_state.clone();
             handles.push(async move {
                 get_cached_data(
@@ -528,5 +615,531 @@ mod tests {
             let response = result.unwrap();
             assert_eq!(response.status(), actix_web::http::StatusCode::OK);
         }
+    }
+
+    // ====================================================================================
+    // SSE Integration Tests
+    // ====================================================================================
+
+    fn make_app_state_with_sse() -> AppState {
+        AppState {
+            device_states: Arc::new(DashMap::new()),
+            config: Arc::new(Config {
+                server: Server {
+                    rpc_port: 8080,
+                    http_port: 8081,
+                    ..Default::default()
+                },
+                logging: Logging {
+                    level: "info".to_string(),
+                    file: String::new(),
+                    daily_rotation: false,
+                },
+                timeouts: Default::default(),
+                devices: vec![],
+                streams: vec![],
+                stream_settings: Default::default(),
+            }),
+            data_cache: DataCache::new(),
+            sse_registry: Arc::new(SseConnectionRegistry::new()),
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_stream_empty_groups_error() {
+        let app_state = make_app_state_with_sse();
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "plc-1".to_string(),
+                groups: "".to_string(),
+            }),
+            web::Data::new(app_state),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Either::Left(_)),
+            "Should return error response for empty groups"
+        );
+
+        if let Either::Left(response) = result {
+            assert_eq!(response.status(), actix_web::http::StatusCode::BAD_REQUEST);
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_stream_valid_query_params() {
+        let app_state = make_app_state_with_sse();
+        let initial_count = app_state.sse_registry.count();
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "plc-1".to_string(),
+                groups: "temperature,pressure".to_string(),
+            }),
+            web::Data::new(app_state.clone()),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Either::Right(_)),
+            "Should return SSE stream for valid params"
+        );
+
+        assert_eq!(app_state.sse_registry.count(), initial_count + 1);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_stream_single_group() {
+        let app_state = make_app_state_with_sse();
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "robot-arm-1".to_string(),
+                groups: "position".to_string(),
+            }),
+            web::Data::new(app_state),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Either::Right(_)),
+            "Should accept single group"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_stream_groups_with_whitespace() {
+        let app_state = make_app_state_with_sse();
+        let initial_count = app_state.sse_registry.count();
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "plc-1".to_string(),
+                groups: "  temperature , pressure , humidity ".to_string(),
+            }),
+            web::Data::new(app_state.clone()),
+        )
+        .await;
+
+        assert!(matches!(result, Either::Right(_)));
+        assert_eq!(app_state.sse_registry.count(), initial_count + 1);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_stream_special_device_id() {
+        let app_state = make_app_state_with_sse();
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "plc-device_1.2-3".to_string(),
+                groups: "temp".to_string(),
+            }),
+            web::Data::new(app_state),
+        )
+        .await;
+
+        assert!(matches!(result, Either::Right(_)));
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_multiple_connections_independent() {
+        let app_state = make_app_state_with_sse();
+        let initial_count = app_state.sse_registry.count();
+
+        for i in 0..5 {
+            let result = sse_stream(
+                web::Query(SseQuery {
+                    device: format!("plc-{}", i),
+                    groups: format!("group{}", i),
+                }),
+                web::Data::new(app_state.clone()),
+            )
+            .await;
+            assert!(matches!(result, Either::Right(_)));
+        }
+
+        assert_eq!(app_state.sse_registry.count(), initial_count + 5);
+
+        let ids = app_state.sse_registry.all_connection_ids();
+        let unique_ids: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(unique_ids.len(), ids.len());
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_connection_stores_filter_info() {
+        let app_state = make_app_state_with_sse();
+
+        let device_id = "test-device-123";
+        let groups = vec!["temperature", "pressure", "humidity"];
+        let groups_str = groups.join(",");
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: device_id.to_string(),
+                groups: groups_str,
+            }),
+            web::Data::new(app_state.clone()),
+        )
+        .await;
+
+        assert!(matches!(result, Either::Right(_)));
+
+        let ids = app_state.sse_registry.all_connection_ids();
+        assert!(!ids.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_registry_connection_counting() {
+        let app_state = make_app_state_with_sse();
+
+        assert_eq!(app_state.sse_registry.count(), 0);
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "plc-1".to_string(),
+                groups: "temp".to_string(),
+            }),
+            web::Data::new(app_state.clone()),
+        )
+        .await;
+        assert!(matches!(result, Either::Right(_)));
+        assert_eq!(app_state.sse_registry.count(), 1);
+
+        for i in 2..=10 {
+            let _ = sse_stream(
+                web::Query(SseQuery {
+                    device: format!("plc-{}", i),
+                    groups: "temp".to_string(),
+                }),
+                web::Data::new(app_state.clone()),
+            )
+            .await;
+        }
+        assert_eq!(app_state.sse_registry.count(), 10);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_worker_routes_to_subscribers() {
+        use crate::SseConnection;
+        use tokio::sync::mpsc::channel;
+
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let (tx, mut rx) = channel(100);
+        let conn = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567890,
+            tx,
+        );
+        let conn_id = registry.register(conn);
+
+        let test_data = SseEventData::JsonData(json!({"temp": 25.5}));
+        let sent = registry.send_to_subscribers("plc-1", "temperature", test_data.clone());
+        assert_eq!(sent, 1);
+
+        let received = rx.try_recv().unwrap();
+        assert!(matches!(received, SseEventData::JsonData(_)));
+
+        registry.unregister(conn_id);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_filtering_excludes_wrong_device() {
+        use crate::SseConnection;
+        use tokio::sync::mpsc::channel;
+
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let (tx, mut rx) = channel(100);
+        let conn = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567890,
+            tx,
+        );
+        registry.register(conn);
+
+        let test_data = SseEventData::JsonData(json!({"temp": 30.0}));
+        let sent = registry.send_to_subscribers("plc-2", "temperature", test_data);
+        assert_eq!(sent, 0);
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_filtering_excludes_wrong_group() {
+        use crate::SseConnection;
+        use tokio::sync::mpsc::channel;
+
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let (tx, mut rx) = channel(100);
+        let conn = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567890,
+            tx,
+        );
+        registry.register(conn);
+
+        let test_data = SseEventData::JsonData(json!({"pressure": 101.3}));
+        let sent = registry.send_to_subscribers("plc-1", "pressure", test_data);
+        assert_eq!(sent, 0);
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_multiple_clients_receive_same_data() {
+        use crate::SseConnection;
+        use tokio::sync::mpsc::channel;
+
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let (tx1, mut rx1) = channel(100);
+        let conn1 = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567890,
+            tx1,
+        );
+        registry.register(conn1);
+
+        let (tx2, mut rx2) = channel(100);
+        let conn2 = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567891,
+            tx2,
+        );
+        registry.register(conn2);
+
+        let (tx3, mut rx3) = channel(100);
+        let conn3 = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567892,
+            tx3,
+        );
+        registry.register(conn3);
+
+        let test_data = SseEventData::JsonData(json!({"temp": 26.5}));
+        let sent = registry.send_to_subscribers("plc-1", "temperature", test_data);
+        assert_eq!(sent, 3);
+
+        assert!(rx1.try_recv().is_ok());
+        assert!(rx2.try_recv().is_ok());
+        assert!(rx3.try_recv().is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_heartbeat_to_all_connections() {
+        use crate::SseConnection;
+        use tokio::sync::mpsc::channel;
+
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let mut receivers = vec![];
+        for i in 0..5 {
+            let (tx, rx) = channel(100);
+            receivers.push(rx);
+            let conn = SseConnection::new(
+                format!("plc-{}", i),
+                vec!["temperature".to_string()],
+                1234567890 + i as u64,
+                tx,
+            );
+            registry.register(conn);
+        }
+
+        let sent = registry.send_heartbeat_to_all();
+        assert_eq!(sent, 5);
+
+        for mut rx in receivers {
+            let received = rx.try_recv().unwrap();
+            assert!(matches!(received, SseEventData::Heartbeat));
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_connection_cleanup() {
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(100);
+        let conn = crate::SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string()],
+            1234567890,
+            tx,
+        );
+        let conn_id = registry.register(conn);
+        assert_eq!(registry.count(), 1);
+
+        registry.unregister(conn_id);
+        assert_eq!(registry.count(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_data_stream_message_structure() {
+        let msg = Message::DataStreamUpdate {
+            device_id: "plc-1".to_string(),
+            signal_group: "temperature_sensor".to_string(),
+            values: json!({"temp": 25.5, "humidity": 60}),
+            timestamp_ms: 1712345678901,
+            latency_us: 150,
+            sequence: 42,
+        };
+
+        if let Message::DataStreamUpdate {
+            device_id,
+            signal_group,
+            values,
+            timestamp_ms,
+            latency_us,
+            sequence,
+        } = &msg
+        {
+            assert_eq!(device_id, "plc-1");
+            assert_eq!(signal_group, "temperature_sensor");
+            assert_eq!(values["temp"], 25.5);
+            assert_eq!(timestamp_ms, &1712345678901);
+            assert_eq!(latency_us, &150);
+            assert_eq!(sequence, &42);
+        } else {
+            panic!("Expected DataStreamUpdate message");
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_concurrent_endpoint_access() {
+        use futures::future::join_all;
+
+        let app_state = make_app_state_with_sse();
+        let initial_count = app_state.sse_registry.count();
+
+        let mut handles = vec![];
+        for i in 0..10 {
+            let state = app_state.clone();
+            handles.push(async move {
+                sse_stream(
+                    web::Query(SseQuery {
+                        device: format!("plc-{}", i),
+                        groups: format!("group{}", i % 3),
+                    }),
+                    web::Data::new(state),
+                )
+                .await
+            });
+        }
+
+        let results = join_all(handles).await;
+
+        for result in results {
+            assert!(
+                matches!(result, Either::Right(_)),
+                "All SSE connections should be accepted"
+            );
+        }
+
+        assert_eq!(app_state.sse_registry.count(), initial_count + 10);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_partial_group_matching() {
+        use crate::SseConnection;
+        use tokio::sync::mpsc::channel;
+
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        let (tx, mut rx) = channel(100);
+        let conn = SseConnection::new(
+            "plc-1".to_string(),
+            vec!["temperature".to_string(), "pressure".to_string()],
+            1234567890,
+            tx,
+        );
+        registry.register(conn);
+
+        let sent1 = registry.send_to_subscribers(
+            "plc-1",
+            "temperature",
+            SseEventData::JsonData(json!({"temp": 25.5})),
+        );
+        assert_eq!(sent1, 1);
+        assert!(rx.try_recv().is_ok());
+
+        let sent2 = registry.send_to_subscribers(
+            "plc-1",
+            "pressure",
+            SseEventData::JsonData(json!({"pressure": 101.3})),
+        );
+        assert_eq!(sent2, 1);
+        assert!(rx.try_recv().is_ok());
+
+        let sent3 = registry.send_to_subscribers(
+            "plc-1",
+            "humidity",
+            SseEventData::JsonData(json!({"humidity": 60})),
+        );
+        assert_eq!(sent3, 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_registry_clear() {
+        let app_state = make_app_state_with_sse();
+        let registry = &app_state.sse_registry;
+
+        for i in 0..5 {
+            let (tx, _rx) = tokio::sync::mpsc::channel(100);
+            let conn = crate::SseConnection::new(
+                format!("plc-{}", i),
+                vec!["temperature".to_string()],
+                1234567890 + i as u64,
+                tx,
+            );
+            registry.register(conn);
+        }
+        assert_eq!(registry.count(), 5);
+
+        registry.clear();
+        assert_eq!(registry.count(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_sse_integration_with_cache() {
+        let app_state = make_app_state_with_sse();
+
+        let cache_key = "plc-1_temperature";
+        let entry = DataCacheEntry::new(
+            json!({"temp": 25.5, "humidity": 60}),
+            1712345678901,
+            150,
+            false,
+        );
+        app_state.data_cache.set(cache_key, entry);
+
+        let cached = app_state.data_cache.get(cache_key);
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap().values["temp"], 25.5);
+
+        let result = sse_stream(
+            web::Query(SseQuery {
+                device: "plc-1".to_string(),
+                groups: "temperature".to_string(),
+            }),
+            web::Data::new(app_state.clone()),
+        )
+        .await;
+        assert!(matches!(result, Either::Right(_)));
     }
 }

@@ -158,6 +158,16 @@ pub mod latency_monitor;
 /// 对应文件：`data_stream_worker.rs`
 pub mod data_stream_worker;
 
+/// SSE (Server-Sent Events) Worker
+///
+/// 职责：接收 DataStreamUpdate 消息并路由到订阅的 SSE 客户端
+/// 功能：
+/// - 订阅 Hub 的 DataStreamUpdate 消息
+/// - 管理 SSE 连接注册表
+/// - 路由数据更新到连接的客户端（Task 7 实现）
+/// 对应文件：`sse_worker.rs`
+pub mod sse_worker;
+
 // ========== 如何使用这些模块 ==========
 //
 // 在其他文件中导入示例：

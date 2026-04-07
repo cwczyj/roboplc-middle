@@ -64,6 +64,10 @@ pub use workers::modbus::{
 
 pub use messages::{DeviceResponseData, Message, Operation, SystemStatusResponse};
 
+pub use workers::sse_worker::{
+    create_sse_channel, SseConnection, SseConnectionId, SseConnectionRegistry, SseEventData,
+};
+
 use dashmap::DashMap;
 use rtsc::buf::DataBuffer;
 use serde_json::Value as JsonValue;
@@ -372,6 +376,9 @@ pub struct Variables {
 
     /// 数据缓存，用于流式数据模式
     pub data_cache: DataCache,
+
+    /// SSE 连接注册表（用于 SSE 流式推送）
+    pub sse_registry: Arc<SseConnectionRegistry>,
 }
 
 /// 为 Variables 实现 Debug trait
@@ -385,6 +392,7 @@ impl std::fmt::Debug for Variables {
             .field("modbus_transactions_len", &self.modbus_transactions.len())
             .field("device_events_len", &self.device_events.len())
             .field("data_cache", &self.data_cache)
+            .field("sse_registry_count", &self.sse_registry.count())
             .finish()
     }
 }
@@ -397,6 +405,7 @@ impl Default for Variables {
             modbus_transactions: DataBuffer::bounded(500),
             device_events: DataBuffer::bounded(500),
             data_cache: DataCache::new(),
+            sse_registry: Arc::new(SseConnectionRegistry::new()),
         }
     }
 }
