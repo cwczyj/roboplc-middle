@@ -365,7 +365,7 @@
       });
     }
 
-function toDegrees(rad) {
+    function toDegrees(rad) {
       return rad * (180 / Math.PI);
     }
 
@@ -373,17 +373,6 @@ function toDegrees(rad) {
       if (num === null || num === undefined) return '--';
       return Number(num).toFixed(decimals);
     }
-
-    function updateJointValues(data) {
-      // Update joint positions (convert rad to degrees)
-      if (data.values) {
-        for (const [joint, value] of Object.entries(data.values)) {
-          const el = document.getElementById(`joint-${joint}`);
-          if (el) {
-            el.textContent = formatNumber(toDegrees(value));
-          }
-        }
-      }
 
     function addLog(message, type = 'info') {
       const entry = document.createElement('div');
@@ -412,12 +401,12 @@ function toDegrees(rad) {
     }
 
     function updateJointValues(data) {
-      // Update joint positions
+      // Update joint positions (convert rad to degrees)
       if (data.values) {
         for (const [joint, value] of Object.entries(data.values)) {
           const el = document.getElementById(`joint-${joint}`);
           if (el) {
-            el.textContent = formatNumber(value);
+            el.textContent = formatNumber(toDegrees(value));
           }
         }
       }

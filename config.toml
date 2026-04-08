@@ -189,6 +189,12 @@ offset = 0
 
 # ============== 流配置 ==============
 
+# 可选: 全局流式设置
+[stream_settings]
+max_streams_per_device = 10        # 每个设备最大流数量
+default_poll_interval_ms = 100     # 默认轮询间隔
+cache_size = 1000                  # 缓存条目数限制
+
 [[streams]]
 device_id = "Test-Dobot"
 signal_group = "real_time_joint_position"
