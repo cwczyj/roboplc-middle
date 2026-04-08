@@ -469,9 +469,10 @@ impl ModbusConnectionPool {
     /// Acquire a connection from the pool for parallel execution.
     /// Returns a connection that must be released via `release_connection`.
     pub fn acquire_connection(&self) -> Result<Client, Box<dyn std::error::Error>> {
+        let available_before = self.available.read().len();
         tracing::debug!(
             endpoint = %self.endpoint,
-            available = self.available.read().len(),
+            available = available_before,
             pool_size = self.pool_size,
             total_created = self.total_created.load(Ordering::Relaxed),
             "Attempting to acquire connection from pool"
@@ -481,19 +482,27 @@ impl ModbusConnectionPool {
 
         // Clean up unhealthy or expired connections at the front
         let mut dropped_count = 0;
+        let mut dropped_reasons: Vec<&'static str> = Vec::new();
         while let Some(front) = available.front() {
             if front.is_healthy && front.age() < self.health_check_interval {
                 break;
             }
+            let reason = if !front.is_healthy {
+                "unhealthy"
+            } else {
+                "expired"
+            };
+            dropped_reasons.push(reason);
             available.pop_front();
             self.total_created.fetch_sub(1, Ordering::Relaxed);
             dropped_count += 1;
         }
 
         if dropped_count > 0 {
-            tracing::debug!(
+            tracing::info!(
                 endpoint = %self.endpoint,
                 dropped_count = dropped_count,
+                reasons = ?dropped_reasons,
                 remaining = available.len(),
                 "Cleaned up stale connections from pool"
             );
@@ -501,18 +510,20 @@ impl ModbusConnectionPool {
 
         // Try to acquire a healthy connection
         if let Some(pooled) = available.pop_front() {
-            tracing::debug!(
+            tracing::info!(
                 endpoint = %self.endpoint,
                 available_after = available.len(),
-                "Connection acquired from pool"
+                "Connection reused from pool"
             );
             return Ok(pooled.client);
         }
 
         // Pool is empty, create new connection
         drop(available);
-        tracing::debug!(
+        tracing::info!(
             endpoint = %self.endpoint,
+            available_before = available_before,
+            dropped = dropped_count,
             "Pool empty, creating new connection"
         );
         self.create_connection()
@@ -521,9 +532,10 @@ impl ModbusConnectionPool {
     /// Release a connection back to the pool after operation completes.
     pub fn release_connection(&self, client: Client, is_healthy: bool) {
         if !is_healthy {
-            tracing::debug!(
+            tracing::info!(
                 endpoint = %self.endpoint,
-                "Not returning failed connection to pool"
+                reason = "operation_failed",
+                "Connection discarded - not returning to pool"
             );
             self.total_created.fetch_sub(1, Ordering::Relaxed);
             return;
@@ -532,14 +544,14 @@ impl ModbusConnectionPool {
         let mut available = self.available.write();
         if available.len() < self.pool_size {
             available.push_back(PooledConnection::new(client));
-            tracing::debug!(
+            tracing::info!(
                 endpoint = %self.endpoint,
                 available = available.len(),
                 pool_size = self.pool_size,
                 "Connection returned to pool"
             );
         } else {
-            tracing::debug!(
+            tracing::info!(
                 endpoint = %self.endpoint,
                 pool_size = self.pool_size,
                 "Pool at capacity, discarding connection"
