@@ -499,7 +499,7 @@ impl ModbusConnectionPool {
         }
 
         if dropped_count > 0 {
-            tracing::info!(
+            tracing::debug!(
                 endpoint = %self.endpoint,
                 dropped_count = dropped_count,
                 reasons = ?dropped_reasons,
@@ -510,7 +510,7 @@ impl ModbusConnectionPool {
 
         // Try to acquire a healthy connection
         if let Some(pooled) = available.pop_front() {
-            tracing::info!(
+            tracing::debug!(
                 endpoint = %self.endpoint,
                 available_after = available.len(),
                 "Connection reused from pool"
@@ -520,7 +520,7 @@ impl ModbusConnectionPool {
 
         // Pool is empty, create new connection
         drop(available);
-        tracing::info!(
+        tracing::debug!(
             endpoint = %self.endpoint,
             available_before = available_before,
             dropped = dropped_count,
@@ -532,7 +532,7 @@ impl ModbusConnectionPool {
     /// Release a connection back to the pool after operation completes.
     pub fn release_connection(&self, client: Client, is_healthy: bool) {
         if !is_healthy {
-            tracing::info!(
+            tracing::debug!(
                 endpoint = %self.endpoint,
                 reason = "operation_failed",
                 "Connection discarded - not returning to pool"
@@ -544,14 +544,14 @@ impl ModbusConnectionPool {
         let mut available = self.available.write();
         if available.len() < self.pool_size {
             available.push_back(PooledConnection::new(client));
-            tracing::info!(
+            tracing::debug!(
                 endpoint = %self.endpoint,
                 available = available.len(),
                 pool_size = self.pool_size,
                 "Connection returned to pool"
             );
         } else {
-            tracing::info!(
+            tracing::debug!(
                 endpoint = %self.endpoint,
                 pool_size = self.pool_size,
                 "Pool at capacity, discarding connection"

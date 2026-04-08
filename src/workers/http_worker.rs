@@ -13,6 +13,7 @@
 use actix_sse::Sse;
 use actix_web::{web, App, Either, HttpResponse, HttpServer, Result};
 use dashmap::DashMap;
+use futures_util::StreamExt;
 use roboplc::controller::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
@@ -20,7 +21,6 @@ use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::StreamExt as _;
 
 use crate::{
     config::Config, create_sse_channel, DataCache, DeviceStatus, Message, SseConnection,
@@ -254,18 +254,21 @@ async fn sse_stream(
 
     let stream = ReceiverStream::new(rx);
 
-    let event_stream = stream.map(move |event| {
-        let _guard = &cleanup_guard;
-        match event {
-            SseEventData::JsonData(data) => {
-                let json_str = serde_json::to_string(&data).unwrap_or_default();
-                Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
+    let event_stream = stream
+        .inspect(move |_event| {
+            let _ = &cleanup_guard;
+        })
+        .map(move |event| {
+            match event {
+                SseEventData::JsonData(data) => {
+                    let json_str = serde_json::to_string(&data).unwrap_or_default();
+                    Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
+                }
+                SseEventData::Heartbeat => {
+                    Ok(actix_sse::Event::Comment("heartbeat".into()))
+                }
             }
-            SseEventData::Heartbeat => {
-                Ok(actix_sse::Event::Comment("heartbeat".into()))
-            }
-        }
-    });
+        });
 
     let sse = Sse::from_stream(event_stream)
         .with_keep_alive(std::time::Duration::from_secs(15))
