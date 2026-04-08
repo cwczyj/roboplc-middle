@@ -206,7 +206,19 @@ async fn sse_stream(
     let (tx, rx) = create_sse_channel();
 
     let conn = SseConnection::new(device_id.clone(), signal_groups.clone(), connected_at, tx);
-    let conn_id = data.sse_registry.register(conn);
+    let conn_id = match data.sse_registry.register(conn) {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(
+                device_id = %device_id,
+                error = %e,
+                "SSE connection rejected"
+            );
+            return Either::Left(HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": e
+            })));
+        }
+    };
 
     tracing::info!(
         device_id = %device_id,
@@ -835,7 +847,7 @@ mod tests {
             1234567890,
             tx,
         );
-        let conn_id = registry.register(conn);
+        let conn_id = registry.register(conn).unwrap();
 
         let test_data = SseEventData::JsonData(json!({"temp": 25.5}));
         let sent = registry.send_to_subscribers("plc-1", "temperature", test_data.clone());
@@ -862,7 +874,7 @@ mod tests {
             1234567890,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         let test_data = SseEventData::JsonData(json!({"temp": 30.0}));
         let sent = registry.send_to_subscribers("plc-2", "temperature", test_data);
@@ -886,7 +898,7 @@ mod tests {
             1234567890,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         let test_data = SseEventData::JsonData(json!({"pressure": 101.3}));
         let sent = registry.send_to_subscribers("plc-1", "pressure", test_data);
@@ -957,7 +969,7 @@ mod tests {
                 1234567890 + i as u64,
                 tx,
             );
-            registry.register(conn);
+            registry.register(conn).unwrap();
         }
 
         let sent = registry.send_heartbeat_to_all();
@@ -981,7 +993,7 @@ mod tests {
             1234567890,
             tx,
         );
-        let conn_id = registry.register(conn);
+        let conn_id = registry.register(conn).unwrap();
         assert_eq!(registry.count(), 1);
 
         registry.unregister(conn_id);
@@ -1068,7 +1080,7 @@ mod tests {
             1234567890,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         let sent1 = registry.send_to_subscribers(
             "plc-1",
@@ -1107,7 +1119,7 @@ mod tests {
                 1234567890 + i as u64,
                 tx,
             );
-            registry.register(conn);
+            registry.register(conn).unwrap();
         }
         assert_eq!(registry.count(), 5);
 

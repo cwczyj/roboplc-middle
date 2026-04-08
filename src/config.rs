@@ -204,9 +204,10 @@ fn default_max_operation_timeout_ms() -> u16 {
     30000
 }
 
-/// 默认 Hub 发送超时（500ms）
+/// 默认 Hub 发送超时（2000ms）
+/// 增加到 2000ms 以防止高负载 SSE 广播时超时
 fn default_hub_send_timeout_ms() -> u16 {
-    500
+    2000
 }
 
 /// 默认心跳超时（1000ms）
@@ -962,7 +963,7 @@ daily_rotation = true
         assert_eq!(config.timeouts.connect_timeout_ms, 200);
         assert_eq!(config.timeouts.operation_timeout_ms, 1000);
         assert_eq!(config.timeouts.max_operation_timeout_ms, 30000);
-        assert_eq!(config.timeouts.hub_send_timeout_ms, 500);
+        assert_eq!(config.timeouts.hub_send_timeout_ms, 2000);
         assert_eq!(config.timeouts.heartbeat_timeout_ms, 1000);
     }
 
@@ -1020,7 +1021,7 @@ heartbeat_timeout_ms = 1500
         // Verify default values for unspecified fields
         assert_eq!(config.timeouts.operation_timeout_ms, 1000);
         assert_eq!(config.timeouts.max_operation_timeout_ms, 30000);
-        assert_eq!(config.timeouts.hub_send_timeout_ms, 500);
+        assert_eq!(config.timeouts.hub_send_timeout_ms, 2000);
     }
 
     #[test]
@@ -1029,7 +1030,7 @@ heartbeat_timeout_ms = 1500
             connect_timeout_ms: 200,
             operation_timeout_ms: 1000,
             max_operation_timeout_ms: 30000,
-            hub_send_timeout_ms: 500,
+            hub_send_timeout_ms: 2000,
             heartbeat_timeout_ms: 1000,
             pool_health_check_interval_sec: 30,
         };
@@ -1041,7 +1042,7 @@ heartbeat_timeout_ms = 1500
             timeouts.max_operation_timeout(),
             Duration::from_millis(30000)
         );
-        assert_eq!(timeouts.hub_send_timeout(), Duration::from_millis(500));
+        assert_eq!(timeouts.hub_send_timeout(), Duration::from_millis(2000));
         assert_eq!(timeouts.heartbeat_timeout(), Duration::from_millis(1000));
     }
 

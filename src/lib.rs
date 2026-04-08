@@ -214,7 +214,8 @@ pub const DEFAULT_OPERATION_TIMEOUT_MS: u16 = 1000;
 pub const MAX_OPERATION_TIMEOUT_MS: u16 = 30000;
 
 /// Default timeout for Hub send operations (milliseconds)
-pub const DEFAULT_HUB_SEND_TIMEOUT_MS: u16 = 500;
+/// Increased from 500ms to 2000ms to prevent timeouts during high-load SSE broadcasting
+pub const DEFAULT_HUB_SEND_TIMEOUT_MS: u16 = 2000;
 
 /// Default heartbeat timeout for device health checks (milliseconds)
 pub const DEFAULT_HEARTBEAT_TIMEOUT_MS: u16 = 1000;

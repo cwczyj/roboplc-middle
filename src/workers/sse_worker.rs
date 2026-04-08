@@ -104,10 +104,16 @@ impl SseConnectionRegistry {
         }
     }
 
-    pub fn register(&self, connection: SseConnection) -> SseConnectionId {
+    pub fn register(&self, connection: SseConnection) -> Result<SseConnectionId, String> {
+        if self.connections.len() >= MAX_SSE_CONNECTIONS {
+            return Err(format!(
+                "Maximum SSE connections limit reached ({}). Rejecting new connection.",
+                MAX_SSE_CONNECTIONS
+            ));
+        }
         let id = SseConnectionId::new(self.next_id.fetch_add(1, Ordering::Relaxed));
         self.connections.insert(id, connection);
-        id
+        Ok(id)
     }
 
     pub fn unregister(&self, id: SseConnectionId) -> Option<Sender<SseEventData>> {
@@ -172,6 +178,8 @@ impl std::fmt::Debug for SseConnectionRegistry {
 }
 
 const SSE_HEARTBEAT_INTERVAL_SECS: u64 = 15;
+
+const MAX_SSE_CONNECTIONS: usize = 100;
 
 /// SSE Worker
 #[derive(WorkerOpts)]
@@ -366,7 +374,7 @@ mod tests {
             1000,
             tx1,
         );
-        let id1 = registry.register(conn1);
+        let id1 = registry.register(conn1).unwrap();
         assert_eq!(registry.count(), 1);
 
         let (tx2, _rx2) = channel(10);
@@ -376,7 +384,7 @@ mod tests {
             2000,
             tx2,
         );
-        let id2 = registry.register(conn2);
+        let id2 = registry.register(conn2).unwrap();
         assert_eq!(registry.count(), 2);
 
         assert_ne!(id1, id2);
@@ -398,7 +406,7 @@ mod tests {
             1000,
             tx1,
         );
-        registry.register(conn1);
+        registry.register(conn1).unwrap();
 
         let (tx2, mut rx2) = channel(10);
         let conn2 = SseConnection::new(
@@ -407,7 +415,7 @@ mod tests {
             2000,
             tx2,
         );
-        registry.register(conn2);
+        registry.register(conn2).unwrap();
 
         let (tx3, _rx3) = channel(10);
         let conn3 = SseConnection::new(
@@ -416,7 +424,7 @@ mod tests {
             3000,
             tx3,
         );
-        registry.register(conn3);
+        registry.register(conn3).unwrap();
 
         let sent_count = registry.send_to_subscribers(
             "plc-1",
@@ -440,7 +448,7 @@ mod tests {
             1000,
             tx1,
         );
-        registry.register(conn1);
+        registry.register(conn1).unwrap();
 
         let (tx2, mut rx2) = channel(10);
         let conn2 = SseConnection::new(
@@ -449,7 +457,7 @@ mod tests {
             2000,
             tx2,
         );
-        registry.register(conn2);
+        registry.register(conn2).unwrap();
 
         let sent_count = registry.send_heartbeat_to_all();
         assert_eq!(sent_count, 2);
@@ -478,7 +486,7 @@ mod tests {
             1000,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         let msg = Message::DataStreamUpdate {
             device_id: "plc-1".to_string(),
@@ -510,7 +518,7 @@ mod tests {
             1000,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         let msg = Message::DataStreamUpdate {
             device_id: "plc-2".to_string(),
@@ -565,7 +573,7 @@ mod tests {
 
         let registry = Arc::new(SseConnectionRegistry::new());
         let num_threads = 20;
-        let mut handles: Vec<std::thread::JoinHandle<SseConnectionId>> = vec![];
+        let mut handles: Vec<std::thread::JoinHandle<Result<SseConnectionId, String>>> = vec![];
 
         for i in 0..num_threads {
             let registry_clone = registry.clone();
@@ -584,7 +592,7 @@ mod tests {
 
         let ids: Vec<SseConnectionId> = handles
             .into_iter()
-            .map(|h| h.join().unwrap())
+            .map(|h| h.join().unwrap().unwrap())
             .collect();
 
         let mut seen = std::collections::HashSet::new();
@@ -600,7 +608,8 @@ mod tests {
         let registry = SseConnectionRegistry::new();
         let mut _receivers = Vec::new();
 
-        for i in 0..1000 {
+        // Test with connections under the limit (MAX_SSE_CONNECTIONS = 100)
+        for i in 0..99 {
             let (tx, rx) = channel(10);
             _receivers.push(rx);
             let conn = SseConnection::new(
@@ -609,20 +618,20 @@ mod tests {
                 i as u64,
                 tx,
             );
-            registry.register(conn);
+            registry.register(conn).unwrap();
         }
 
-        assert_eq!(registry.count(), 1000);
+        assert_eq!(registry.count(), 99);
 
         let sent_count = registry.send_to_subscribers("device-0", "group-0", SseEventData::Heartbeat);
-        assert!(sent_count >= 100);
+        assert!(sent_count >= 9);
 
         let all_ids = registry.all_connection_ids();
-        for id in all_ids.iter().take(500) {
+        for id in all_ids.iter().take(49) {
             registry.unregister(*id);
         }
 
-        assert_eq!(registry.count(), 500);
+        assert_eq!(registry.count(), 50);
     }
 
     #[test]
@@ -648,7 +657,7 @@ mod tests {
             1000,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         *worker.last_heartbeat_check.write() = Instant::now() - Duration::from_secs(20);
         worker.send_heartbeat_if_needed(&registry);
@@ -669,7 +678,7 @@ mod tests {
             1000,
             tx,
         );
-        registry.register(conn);
+        registry.register(conn).unwrap();
 
         worker.send_heartbeat_if_needed(&registry);
         assert!(rx.try_recv().is_err());

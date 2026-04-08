@@ -245,4 +245,16 @@ impl ModbusWorkerState {
             }
         }
     }
+
+    pub fn log_pool_status(&self) {
+        if let Some(pool) = &self.connection_pool {
+            tracing::debug!(
+                device_id = %self.device.id,
+                pool_size = pool.pool_size(),
+                available = pool.available_count(),
+                total_created = pool.total_created(),
+                "Connection pool status"
+            );
+        }
+    }
 }

@@ -20,10 +20,12 @@ pub const DEFAULT_HUB_SEND_TIMEOUT: Duration =
     Duration::from_millis(DEFAULT_HUB_SEND_TIMEOUT_MS as u64);
 
 /// Number of worker threads in the Hub send pool
-const HUB_SEND_POOL_SIZE: usize = 4;
+/// Increased from 4 to 16 to handle high-frequency SSE broadcasting
+const HUB_SEND_POOL_SIZE: usize = 16;
 
 /// Maximum capacity of the Hub send task queue
-const HUB_SEND_QUEUE_CAPACITY: usize = 128;
+/// Increased from 128 to 512 to handle burst loads
+const HUB_SEND_QUEUE_CAPACITY: usize = 512;
 
 /// Task for Hub send operations
 type HubSendTask = (Hub<Message>, Message, mpsc::Sender<()>);
@@ -132,18 +134,18 @@ mod tests {
     #[test]
     fn default_timeout_is_reasonable() {
         assert!(DEFAULT_HUB_SEND_TIMEOUT >= Duration::from_millis(100));
-        assert!(DEFAULT_HUB_SEND_TIMEOUT <= Duration::from_secs(1));
+        assert!(DEFAULT_HUB_SEND_TIMEOUT <= Duration::from_secs(3));
     }
 
     #[test]
     fn hub_send_pool_size_is_valid() {
         assert!(HUB_SEND_POOL_SIZE >= 1);
-        assert!(HUB_SEND_POOL_SIZE <= 16);
+        assert!(HUB_SEND_POOL_SIZE <= 64);
     }
 
     #[test]
     fn hub_send_queue_capacity_is_valid() {
         assert!(HUB_SEND_QUEUE_CAPACITY >= 64);
-        assert!(HUB_SEND_QUEUE_CAPACITY <= 1024);
+        assert!(HUB_SEND_QUEUE_CAPACITY <= 2048);
     }
 }
