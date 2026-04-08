@@ -127,10 +127,11 @@ impl SseConnectionRegistry {
         let mut sent_count = 0;
         for entry in self.connections.iter() {
             let conn = entry.value();
-            if conn.device_id == device_id && conn.is_subscribed_to(signal_group) {
-                if conn.sender.try_send(data.clone()).is_ok() {
-                    sent_count += 1;
-                }
+            if conn.device_id == device_id
+                && conn.is_subscribed_to(signal_group)
+                && conn.sender.try_send(data.clone()).is_ok()
+            {
+                sent_count += 1;
             }
         }
         sent_count

@@ -190,20 +190,18 @@ impl DeviceControlHandler {
         let send_response = move |success: bool, data: JsonValue, error: Option<String>| {
             if let Some(ref sender) = respond_to {
                 let _ = sender.send((success, data, error));
-            } else {
-                if let Err(e) = send_to_hub_with_protection(
-                    &hub,
-                    Message::DeviceResponse {
-                        device_id: device_id.clone(),
-                        success,
-                        data,
-                        error,
-                        correlation_id,
-                    },
-                    DEFAULT_HUB_SEND_TIMEOUT,
-                ) {
-                    tracing::warn!(error = %e, device_id = %device_id, "Failed to send device response via Hub");
-                }
+            } else if let Err(e) = send_to_hub_with_protection(
+                &hub,
+                Message::DeviceResponse {
+                    device_id: device_id.clone(),
+                    success,
+                    data,
+                    error,
+                    correlation_id,
+                },
+                DEFAULT_HUB_SEND_TIMEOUT,
+            ) {
+                tracing::warn!(error = %e, device_id = %device_id, "Failed to send device response via Hub");
             }
         };
 
