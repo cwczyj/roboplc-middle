@@ -131,25 +131,65 @@ impl SseConnectionRegistry {
         data: SseEventData,
     ) -> usize {
         let mut sent_count = 0;
+        let mut dead_connections: Vec<SseConnectionId> = Vec::new();
+
         for entry in self.connections.iter() {
             let conn = entry.value();
-            if conn.device_id == device_id
-                && conn.is_subscribed_to(signal_group)
-                && conn.sender.try_send(data.clone()).is_ok()
-            {
-                sent_count += 1;
+            if conn.device_id == device_id && conn.is_subscribed_to(signal_group) {
+                match conn.sender.try_send(data.clone()) {
+                    Ok(()) => sent_count += 1,
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                        tracing::warn!(
+                            device_id = %device_id,
+                            signal_group = %signal_group,
+                            connection_id = entry.key().value(),
+                            "SSE channel full, skipping message"
+                        );
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        dead_connections.push(*entry.key());
+                    }
+                }
             }
         }
+
+        for conn_id in dead_connections {
+            if let Some(sender) = self.unregister(conn_id) {
+                drop(sender);
+            }
+            tracing::info!(
+                connection_id = conn_id.value(),
+                "Cleaned up dead SSE connection"
+            );
+        }
+
         sent_count
     }
 
     pub fn send_heartbeat_to_all(&self) -> usize {
         let mut sent_count = 0;
+        let mut dead_connections: Vec<SseConnectionId> = Vec::new();
+
         for entry in self.connections.iter() {
-            if entry.value().sender.try_send(SseEventData::Heartbeat).is_ok() {
-                sent_count += 1;
+            match entry.value().sender.try_send(SseEventData::Heartbeat) {
+                Ok(()) => sent_count += 1,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    dead_connections.push(*entry.key());
+                }
             }
         }
+
+        for conn_id in dead_connections {
+            if let Some(sender) = self.unregister(conn_id) {
+                drop(sender);
+            }
+            tracing::info!(
+                connection_id = conn_id.value(),
+                "Cleaned up dead SSE connection (heartbeat)"
+            );
+        }
+
         sent_count
     }
 

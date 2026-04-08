@@ -227,48 +227,19 @@ async fn sse_stream(
         "SSE client connected"
     );
 
-    struct CleanupGuard {
-        registry: Arc<SseConnectionRegistry>,
-        conn_id: crate::SseConnectionId,
-        device_id: String,
-    }
-
-    impl Drop for CleanupGuard {
-        fn drop(&mut self) {
-            if let Some(sender) = self.registry.unregister(self.conn_id) {
-                drop(sender);
-            }
-            tracing::info!(
-                device_id = %self.device_id,
-                connection_id = self.conn_id.value(),
-                "SSE client disconnected, connection cleaned up"
-            );
-        }
-    }
-
-    let cleanup_guard = CleanupGuard {
-        registry: Arc::clone(&data.sse_registry),
-        conn_id,
-        device_id: device_id.clone(),
-    };
-
     let stream = ReceiverStream::new(rx);
 
-    let event_stream = stream
-        .inspect(move |_event| {
-            let _ = &cleanup_guard;
-        })
-        .map(move |event| {
-            match event {
-                SseEventData::JsonData(data) => {
-                    let json_str = serde_json::to_string(&data).unwrap_or_default();
-                    Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
-                }
-                SseEventData::Heartbeat => {
-                    Ok(actix_sse::Event::Comment("heartbeat".into()))
-                }
+    let event_stream = stream.map(move |event| {
+        match event {
+            SseEventData::JsonData(data) => {
+                let json_str = serde_json::to_string(&data).unwrap_or_default();
+                Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
             }
-        });
+            SseEventData::Heartbeat => {
+                Ok(actix_sse::Event::Comment("heartbeat".into()))
+            }
+        }
+    });
 
     let sse = Sse::from_stream(event_stream)
         .with_keep_alive(std::time::Duration::from_secs(15))
@@ -279,6 +250,8 @@ async fn sse_stream(
         connection_id = conn_id.value(),
         "SSE stream started"
     );
+
+    let _ = conn_id;
 
     Either::Right(sse)
 }
