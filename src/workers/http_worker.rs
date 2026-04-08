@@ -227,11 +227,35 @@ async fn sse_stream(
         "SSE client connected"
     );
 
-    let _sse_registry = Arc::clone(&data.sse_registry);
-    let _conn_id_for_cleanup = conn_id;
+    struct CleanupGuard {
+        registry: Arc<SseConnectionRegistry>,
+        conn_id: crate::SseConnectionId,
+        device_id: String,
+    }
+
+    impl Drop for CleanupGuard {
+        fn drop(&mut self) {
+            if let Some(sender) = self.registry.unregister(self.conn_id) {
+                drop(sender);
+            }
+            tracing::info!(
+                device_id = %self.device_id,
+                connection_id = self.conn_id.value(),
+                "SSE client disconnected, connection cleaned up"
+            );
+        }
+    }
+
+    let cleanup_guard = CleanupGuard {
+        registry: Arc::clone(&data.sse_registry),
+        conn_id,
+        device_id: device_id.clone(),
+    };
+
     let stream = ReceiverStream::new(rx);
 
     let event_stream = stream.map(move |event| {
+        let _guard = &cleanup_guard;
         match event {
             SseEventData::JsonData(data) => {
                 let json_str = serde_json::to_string(&data).unwrap_or_default();

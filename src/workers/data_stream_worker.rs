@@ -232,7 +232,8 @@ impl Worker<Message, Variables> for DataStreamWorker {
                     );
                 }
 
-                last_poll_times.insert(interval_ms, now);
+                // Use actual completion time, not loop start time, to account for polling duration
+                last_poll_times.insert(interval_ms, std::time::Instant::now());
             }
         }
 
