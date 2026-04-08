@@ -10,6 +10,7 @@
 //! - 触发配置重载
 //! - 支持优雅关闭（3秒超时）
 
+use actix_cors::Cors;
 use actix_sse::Sse;
 use actix_web::{web, App, Either, HttpResponse, HttpServer, Result};
 use dashmap::DashMap;
@@ -307,7 +308,14 @@ impl Worker<Message, Variables> for HttpWorker {
 
             rt.block_on(async move {
                 let server = HttpServer::new(move || {
+                    let cors = Cors::default()
+                        .allow_any_origin()
+                        .allow_any_method()
+                        .allow_any_header()
+                        .max_age(3600);
+
                     App::new()
+                        .wrap(cors)
                         .app_data(app_state.clone())
                         .configure(configure_routes)
                 })
