@@ -185,3 +185,12 @@ register_count = 1
 name = "stop"
 data_type = "bool"
 offset = 0
+
+
+# ============== 流配置 ==============
+
+[[streams]]
+device_id = "Test-Dobot"
+signal_group = "real_time_joint_position"
+poll_interval_ms = 100  # 10Hz 更新频率
+enabled = true

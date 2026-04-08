@@ -32,9 +32,10 @@ use roboplc::controller::prelude::*;
 use roboplc_middleware::{
     config::Config,
     workers::{
-        config_loader::ConfigLoader, heartbeat_worker::HeartbeatWorker, http_worker::HttpWorker,
+        config_loader::ConfigLoader, data_stream_worker::DataStreamWorker,
+        heartbeat_worker::HeartbeatWorker, http_worker::HttpWorker,
         latency_monitor::LatencyMonitor, manager::DeviceManager, modbus::ModbusWorker,
-        rpc::worker::RpcWorker,
+        rpc::worker::RpcWorker, sse_worker::SseWorker,
     },
     Message, Variables,
 };
@@ -157,6 +158,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 7. HeartbeatWorker - 心跳检测
     // 注意：必须在 ModbusWorker 之后启动，因为它依赖 ModbusWorker 处理 GetStatus 请求
     controller.spawn_worker(HeartbeatWorker::new(config.clone()))?;
+
+    // 8. DataStreamWorker - 数据流轮询（仅在配置了 streams 时启动）
+    if !config.streams.is_empty() {
+        controller.spawn_worker(DataStreamWorker::new(config.clone()))?;
+    }
+
+    // 9. SseWorker - SSE 流式推送（仅在配置了 streams 时启动）
+    if !config.streams.is_empty() {
+        controller.spawn_worker(SseWorker::new())?;
+    }
 
     // 注册信号处理器
     // 捕获 SIGINT (Ctrl+C) 和 SIGTERM 信号，优雅地关闭程序

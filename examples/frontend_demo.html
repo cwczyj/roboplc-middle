@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robot Arm Joint Position Monitor</title>
+  <!-- 
+    SSE Joint Position Monitor
+    Usage: Open this file directly in browser (file:// or http://)
+    Connects to: http://localhost:8081/api/stream?device=Test-Dobot&groups=real_time_joint_position
+    
+    Data format:
+    {
+      "device_id": "Test-Dobot",
+      "signal_group": "real_time_joint_position",
+      "values": {"J1": 0.0, "J2": 0.0, "J3": 0.0, "J4": 0.0, "J5": 0.0, "J6": 0.0},  // rad (converted to deg in UI)
+      "timestamp_ms": 1234567890,
+      "latency_us": 2500
+    }
+  -->
+  <style>
+    :root {
+      --bg-primary: #0f0f14;
+      --bg-secondary: #1a1a24;
+      --bg-card: #252532;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0b0;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.3);
+      --success: #22c55e;
+      --error: #ef4444;
+      --border: #333344;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.25rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-size: 0.875rem;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--error);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+      transition: all 0.3s ease;
+    }
+
+    .status-indicator.connected {
+      background: var(--success);
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+    }
+
+    .status-label {
+      color: var(--text-secondary);
+    }
+
+    .status-value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .joints-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+    }
+
+    .joint-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .joint-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+      transform: translateY(-2px);
+    }
+
+    .joint-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .joint-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .joint-unit {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+    }
+
+    .metadata-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .metadata-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .metadata-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    .metadata-value {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .log-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+    }
+
+    .log-entry {
+      color: var(--text-secondary);
+      margin-bottom: 0.25rem;
+    }
+
+    .log-entry.error {
+      color: var(--error);
+    }
+
+    .log-entry.success {
+      color: var(--success);
+    }
+
+    .log-entry:last-child {
+      margin-bottom: 0;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🤖 Robot Arm Joint Position Monitor</h1>
+      <p class="subtitle">Real-time SSE Stream from Test-Dobot</p>
+    </header>
+
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-indicator" id="statusIndicator"></div>
+        <span class="status-label">Status:</span>
+        <span class="status-value" id="statusText">Disconnected</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Last Update:</span>
+        <span class="status-value" id="lastUpdate">--:--:--</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Updates:</span>
+        <span class="status-value" id="updateCount">0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Joint Positions</h2>
+      </div>
+      <div class="joints-grid" id="jointsGrid">
+        <div class="joint-card">
+          <div class="joint-label">J1</div>
+          <div class="joint-value" id="joint-J1">--</div>
+          <div class="joint-unit">deg</div>
+        </div>
+        <div class="joint-card">
+          <div class="joint-label">J2</div>
+          <div class="joint-value" id="joint-J2">--</div>
+          <div class="joint-unit">deg</div>
+        </div>
+        <div class="joint-card">
+          <div class="joint-label">J3</div>
+          <div class="joint-value" id="joint-J3">--</div>
+          <div class="joint-unit">deg</div>
+        </div>
+        <div class="joint-card">
+          <div class="joint-label">J4</div>
+          <div class="joint-value" id="joint-J4">--</div>
+          <div class="joint-unit">deg</div>
+        </div>
+        <div class="joint-card">
+          <div class="joint-label">J5</div>
+          <div class="joint-value" id="joint-J5">--</div>
+          <div class="joint-unit">deg</div>
+        </div>
+        <div class="joint-card">
+          <div class="joint-label">J6</div>
+          <div class="joint-value" id="joint-J6">--</div>
+          <div class="joint-unit">deg</div>
+        </div>
+      </div>
+
+      <div class="metadata-grid">
+        <div class="metadata-item">
+          <div class="metadata-label">Timestamp (ms)</div>
+          <div class="metadata-value" id="timestamp">--</div>
+        </div>
+        <div class="metadata-item">
+          <div class="metadata-label">Latency (μs)</div>
+          <div class="metadata-value" id="latency">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Event Log</h2>
+      </div>
+      <div class="log-container" id="logContainer"></div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const SSE_ENDPOINT = 'http://localhost:8081/api/stream?device=Test-Dobot&groups=real_time_joint_position';
+    
+    // State
+    let eventSource = null;
+    let updateCount = 0;
+    let isConnected = false;
+
+    // DOM Elements
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const lastUpdate = document.getElementById('lastUpdate');
+    const updateCountEl = document.getElementById('updateCount');
+    const timestampEl = document.getElementById('timestamp');
+    const latencyEl = document.getElementById('latency');
+    const logContainer = document.getElementById('logContainer');
+
+    // Utility Functions
+    function formatTime(date) {
+      return date.toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        fractionalSecondDigits: 3
+      });
+    }
+
+function toDegrees(rad) {
+      return rad * (180 / Math.PI);
+    }
+
+    function formatNumber(num, decimals = 2) {
+      if (num === null || num === undefined) return '--';
+      return Number(num).toFixed(decimals);
+    }
+
+    function updateJointValues(data) {
+      // Update joint positions (convert rad to degrees)
+      if (data.values) {
+        for (const [joint, value] of Object.entries(data.values)) {
+          const el = document.getElementById(`joint-${joint}`);
+          if (el) {
+            el.textContent = formatNumber(toDegrees(value));
+          }
+        }
+      }
+
+    function addLog(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${formatTime(new Date())}] ${message}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+      
+      // Keep only last 50 entries
+      while (logContainer.children.length > 50) {
+        logContainer.removeChild(logContainer.firstChild);
+      }
+    }
+
+    function updateStatus(connected) {
+      isConnected = connected;
+      if (connected) {
+        statusIndicator.classList.add('connected');
+        statusText.textContent = 'Connected';
+        statusText.style.color = 'var(--success)';
+      } else {
+        statusIndicator.classList.remove('connected');
+        statusText.textContent = 'Disconnected';
+        statusText.style.color = 'var(--error)';
+      }
+    }
+
+    function updateJointValues(data) {
+      // Update joint positions
+      if (data.values) {
+        for (const [joint, value] of Object.entries(data.values)) {
+          const el = document.getElementById(`joint-${joint}`);
+          if (el) {
+            el.textContent = formatNumber(value);
+          }
+        }
+      }
+
+      // Update metadata
+      timestampEl.textContent = data.timestamp_ms ? formatNumber(data.timestamp_ms, 0) : '--';
+      latencyEl.textContent = data.latency_us ? `${formatNumber(data.latency_us, 0)} μs` : '--';
+      
+      // Update timestamp and counter
+      lastUpdate.textContent = formatTime(new Date());
+      updateCount++;
+      updateCountEl.textContent = updateCount;
+    }
+
+    function connect() {
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      addLog(`Connecting to ${SSE_ENDPOINT}...`);
+      
+      eventSource = new EventSource(SSE_ENDPOINT);
+
+      eventSource.onopen = () => {
+        addLog('SSE connection established', 'success');
+        updateStatus(true);
+      };
+
+      eventSource.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          addLog(`Received: ${data.signal_group || 'unknown'} (latency: ${data.latency_us || 'N/A'} μs)`);
+          updateJointValues(data);
+        } catch (error) {
+          addLog(`Parse error: ${error.message}`, 'error');
+        }
+      });
+
+      eventSource.onerror = (error) => {
+        if (eventSource.readyState === EventSource.CLOSED) {
+          addLog('Connection closed by server', 'error');
+          updateStatus(false);
+        } else if (eventSource.readyState === EventSource.CONNECTING) {
+          addLog('Connection lost, attempting reconnect...', 'error');
+          updateStatus(false);
+        } else {
+          addLog(`Connection error: ${error.message || 'Unknown error'}`, 'error');
+          updateStatus(false);
+        }
+      };
+
+      addLog('EventSource initialized');
+    }
+
+    // Initialize
+    addLog('Starting Robot Arm Monitor...');
+    addLog(`Target endpoint: ${SSE_ENDPOINT}`);
+    connect();
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (eventSource) {
+        eventSource.close();
+        addLog('Connection closed');
+      }
+    });
+  </script>
+</body>
+</html>
