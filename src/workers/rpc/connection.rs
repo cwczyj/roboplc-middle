@@ -28,7 +28,11 @@ pub async fn handle_connection(
     let mut json_started = false;
 
     loop {
-        let timeout_ms = if first_read { INITIAL_TIMEOUT_MS } else { SUBSEQUENT_TIMEOUT_MS };
+        let timeout_ms = if first_read {
+            INITIAL_TIMEOUT_MS
+        } else {
+            SUBSEQUENT_TIMEOUT_MS
+        };
         first_read = false;
 
         match timeout(Duration::from_millis(timeout_ms), stream.read(&mut buf)).await {
@@ -38,7 +42,10 @@ pub async fn handle_connection(
 
                 if request_payload.len() > MAX_REQUEST_SIZE {
                     tracing::warn!(addr = %addr, size = request_payload.len(), max = MAX_REQUEST_SIZE, "Request too large");
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Request too large"));
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Request too large",
+                    ));
                 }
 
                 for &b in &buf[..n] {

@@ -184,7 +184,10 @@ struct SseQuery {
 async fn sse_stream(
     query: web::Query<SseQuery>,
     data: web::Data<AppState>,
-) -> Either<HttpResponse, Sse<impl futures_util::Stream<Item = Result<actix_sse::Event, actix_web::Error>>>> {
+) -> Either<
+    HttpResponse,
+    Sse<impl futures_util::Stream<Item = Result<actix_sse::Event, actix_web::Error>>>,
+> {
     let device_id = query.device.clone();
     let signal_groups: Vec<String> = query
         .groups
@@ -230,16 +233,12 @@ async fn sse_stream(
 
     let stream = ReceiverStream::new(rx);
 
-    let event_stream = stream.map(move |event| {
-        match event {
-            SseEventData::JsonData(data) => {
-                let json_str = serde_json::to_string(&data).unwrap_or_default();
-                Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
-            }
-            SseEventData::Heartbeat => {
-                Ok(actix_sse::Event::Comment("heartbeat".into()))
-            }
+    let event_stream = stream.map(move |event| match event {
+        SseEventData::JsonData(data) => {
+            let json_str = serde_json::to_string(&data).unwrap_or_default();
+            Ok(actix_sse::Event::Data(actix_sse::Data::new(json_str)))
         }
+        SseEventData::Heartbeat => Ok(actix_sse::Event::Comment("heartbeat".into())),
     });
 
     let sse = Sse::from_stream(event_stream)

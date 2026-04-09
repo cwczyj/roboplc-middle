@@ -9,8 +9,8 @@ use serde_json::Value as JsonValue;
 use std::panic::AssertUnwindSafe;
 
 use super::{
-    encode_fields_to_registers, parse_register_address, parse_signal_group_fields,
-    ConnectionState, ModbusOp, OperationGuard, RegisterType,
+    encode_fields_to_registers, parse_register_address, parse_signal_group_fields, ConnectionState,
+    ModbusOp, OperationGuard, RegisterType,
 };
 use crate::workers::modbus::state::ModbusWorkerState;
 
@@ -24,11 +24,13 @@ impl DeviceControlHandler {
     pub fn new(device: Device) -> Self {
         Self {
             state: ModbusWorkerState::new(device),
-            runtime: Some(tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .expect("Failed to create tokio runtime for async operations")),
+            runtime: Some(
+                tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create tokio runtime for async operations"),
+            ),
         }
     }
 
@@ -490,7 +492,7 @@ mod tests {
         let required: Vec<FieldMapping> = vec![];
 
         let result = handler.validate_field_completeness(&provided, &required);
-assert!(result.is_ok());
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -513,7 +515,11 @@ assert!(result.is_ok());
 
         state.complete_operation();
 
-        assert_eq!(op_count.load(Ordering::SeqCst), 1, "Operation should have executed");
+        assert_eq!(
+            op_count.load(Ordering::SeqCst),
+            1,
+            "Operation should have executed"
+        );
     }
 
     /// Test: Multiple concurrent operations execute in parallel.

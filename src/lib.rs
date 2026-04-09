@@ -514,7 +514,11 @@ mod tests {
 
         // Get age - should be approximately 5000ms
         let age = cache.get_age("age_key").unwrap();
-        assert!(age >= 4990 && age <= 5100, "Age should be ~5000ms, got {}", age);
+        assert!(
+            age >= 4990 && age <= 5100,
+            "Age should be ~5000ms, got {}",
+            age
+        );
 
         // Non-existent key should return None
         assert!(cache.get_age("nonexistent").is_none());
@@ -638,12 +642,7 @@ mod tests {
         let vars = Variables::default();
 
         // Verify data_cache is initialized
-        let entry = DataCacheEntry::new(
-            serde_json::json!({"test": 1}),
-            1234567890,
-            100,
-            false,
-        );
+        let entry = DataCacheEntry::new(serde_json::json!({"test": 1}), 1234567890, 100, false);
         vars.data_cache.set("test", entry);
 
         assert!(vars.data_cache.get("test").is_some());

@@ -121,10 +121,10 @@ pub mod modbus;
 /// 职责：监视配置文件变化，实现热重载
 /// 功能：
 /// - 使用 notify crate 监听文件系统事件
-    /// - 配置变更时发送 ConfigUpdate 消息
-    /// - 避免不必要的重载（内容对比）
-    ///
-    /// 对应文件：`config_loader.rs`
+/// - 配置变更时发送 ConfigUpdate 消息
+/// - 避免不必要的重载（内容对比）
+///
+/// 对应文件：`config_loader.rs`
 pub mod config_loader;
 
 /// 配置更新处理器

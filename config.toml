@@ -6,7 +6,7 @@ rpc_max_blocking_threads = 128 # 阻塞操作最大线程数
 
 [logging]
 level = "info"
-file = ""
+file = "./roboplc-middle-test.log"
 daily_rotation = false
 
 [timeouts]
@@ -193,7 +193,7 @@ offset = 0
 [stream_settings]
 max_streams_per_device = 10        # 每个设备最大流数量
 default_poll_interval_ms = 100     # 默认轮询间隔
-cache_size = 1000                  # 缓存条目数限制
+cache_size = 1000               # 缓存条目数限制
 
 [[streams]]
 device_id = "Test-Dobot"

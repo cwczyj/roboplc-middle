@@ -13,7 +13,11 @@
     {
       "device_id": "Test-Dobot",
       "signal_group": "real_time_joint_position",
-      "values": {"J1": 0.0, "J2": 0.0, "J3": 0.0, "J4": 0.0, "J5": 0.0, "J6": 0.0},  // rad (converted to deg in UI)
+      "values": [
+        {"data_type": "f64", "name": "J1", "value": 0.0},
+        {"data_type": "f64", "name": "J2", "value": 0.0},
+        ...
+      ],  // values is an array of {data_type, name, value} objects
       "timestamp_ms": 1234567890,
       "latency_us": 2500
     }
@@ -287,32 +291,32 @@
         <div class="joint-card">
           <div class="joint-label">J1</div>
           <div class="joint-value" id="joint-J1">--</div>
-          <div class="joint-unit">deg</div>
+          <div class="joint-unit">角度</div>
         </div>
         <div class="joint-card">
           <div class="joint-label">J2</div>
           <div class="joint-value" id="joint-J2">--</div>
-          <div class="joint-unit">deg</div>
+          <div class="joint-unit">角度</div>
         </div>
         <div class="joint-card">
           <div class="joint-label">J3</div>
           <div class="joint-value" id="joint-J3">--</div>
-          <div class="joint-unit">deg</div>
+          <div class="joint-unit">角度</div>
         </div>
         <div class="joint-card">
           <div class="joint-label">J4</div>
           <div class="joint-value" id="joint-J4">--</div>
-          <div class="joint-unit">deg</div>
+          <div class="joint-unit">角度</div>
         </div>
         <div class="joint-card">
           <div class="joint-label">J5</div>
           <div class="joint-value" id="joint-J5">--</div>
-          <div class="joint-unit">deg</div>
+          <div class="joint-unit">角度</div>
         </div>
         <div class="joint-card">
           <div class="joint-label">J6</div>
           <div class="joint-value" id="joint-J6">--</div>
-          <div class="joint-unit">deg</div>
+          <div class="joint-unit">角度</div>
         </div>
       </div>
 
@@ -365,13 +369,11 @@
       });
     }
 
-    function toDegrees(rad) {
-      return rad * (180 / Math.PI);
-    }
-
     function formatNumber(num, decimals = 2) {
-      if (num === null || num === undefined) return '--';
-      return Number(num).toFixed(decimals);
+      if (num === null || num === undefined || num === '') return '--';
+      const parsed = typeof num === 'string' ? parseFloat(num) : num;
+      if (isNaN(parsed)) return '--';
+      return parsed.toFixed(decimals);
     }
 
     function addLog(message, type = 'info') {
@@ -401,12 +403,18 @@
     }
 
     function updateJointValues(data) {
-      // Update joint positions (convert rad to degrees)
-      if (data.values) {
-        for (const [joint, value] of Object.entries(data.values)) {
+      console.log('Received SSE data:', data);
+      // Update joint positions
+      // data.values is an array: [{data_type, name, value}, ...]
+      if (data.values && Array.isArray(data.values)) {
+        for (const item of data.values) {
+          const joint = item.name;
+          const value = item.value;
           const el = document.getElementById(`joint-${joint}`);
+          console.log(`Joint ${joint}: value=${value}, el=${el}`);
           if (el) {
-            el.textContent = formatNumber(toDegrees(value));
+            // Values are already in degrees, no conversion needed
+            el.textContent = String(formatNumber(value, 3));
           }
         }
       }
@@ -418,7 +426,7 @@
       // Update timestamp and counter
       lastUpdate.textContent = formatTime(new Date());
       updateCount++;
-      updateCountEl.textContent = updateCount;
+      updateCountEl.textContent = String(updateCount);
     }
 
     function connect() {

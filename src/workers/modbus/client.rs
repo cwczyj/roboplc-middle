@@ -10,7 +10,7 @@ use roboplc::io::modbus::prelude::*;
 use roboplc::io::IoMapping;
 use serde_json::Value as JsonValue;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime};
 
 use binrw::BinRead;
@@ -396,6 +396,7 @@ pub struct ModbusConnectionPool {
     health_check_interval: Duration,
     available: RwLock<VecDeque<PooledConnection>>,
     total_created: std::sync::atomic::AtomicUsize,
+    transaction_id: std::sync::atomic::AtomicU16,
 }
 
 impl Clone for ModbusConnectionPool {
@@ -407,6 +408,7 @@ impl Clone for ModbusConnectionPool {
             health_check_interval: self.health_check_interval,
             available: RwLock::new(VecDeque::new()),
             total_created: std::sync::atomic::AtomicUsize::new(0),
+            transaction_id: std::sync::atomic::AtomicU16::new(1),
         }
     }
 }
@@ -425,6 +427,7 @@ impl ModbusConnectionPool {
             health_check_interval,
             available: RwLock::new(VecDeque::new()),
             total_created: AtomicUsize::new(0),
+            transaction_id: AtomicU16::new(1),
         }
     }
 
@@ -574,6 +577,9 @@ impl ModbusConnectionPool {
             }
         };
 
+        let tr_id = self.transaction_id.fetch_add(1, Ordering::Relaxed);
+        tracing::trace!("Executing Modbus operation with transaction_id={}", tr_id);
+
         let result = Self::dispatch_op_static(&client, self.unit_id, op);
         self.release_connection(client, result.success);
 
@@ -641,6 +647,17 @@ impl ModbusConnectionPool {
         kind: ModbusRegisterKind,
         address: u16,
         count: u16,
+    ) -> OperationResult {
+        Self::read_registers_static_with_tr_id(client, unit_id, kind, address, count, None)
+    }
+
+    fn read_registers_static_with_tr_id(
+        client: &Client,
+        unit_id: u8,
+        kind: ModbusRegisterKind,
+        address: u16,
+        count: u16,
+        transaction_id: Option<u16>,
     ) -> OperationResult {
         let register = ModbusRegister::new(kind, address);
 
