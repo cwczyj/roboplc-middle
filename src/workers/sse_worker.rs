@@ -135,9 +135,14 @@ impl SseConnectionRegistry {
 
         for entry in self.connections.iter() {
             let conn = entry.value();
-            if conn.device_id == device_id && conn.is_subscribed_to(signal_group) {
+            let device_match = conn.device_id == device_id;
+            let signal_match = conn.is_subscribed_to(signal_group);
+
+            if device_match && signal_match {
                 match conn.sender.try_send(data.clone()) {
-                    Ok(()) => sent_count += 1,
+                    Ok(()) => {
+                        sent_count += 1;
+                    }
                     Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                         tracing::warn!(
                             device_id = %device_id,
@@ -251,14 +256,6 @@ impl SseWorker {
             sequence,
         } = msg
         {
-            tracing::trace!(
-                device_id = %device_id,
-                signal_group = %signal_group,
-                sequence = sequence,
-                latency_us = latency_us,
-                "SseWorker received DataStreamUpdate"
-            );
-
             let sse_data = serde_json::json!({
                 "device_id": device_id,
                 "signal_group": signal_group,
@@ -275,13 +272,8 @@ impl SseWorker {
             );
 
             if sent_count > 0 {
-                tracing::debug!(
-                    device_id = %device_id,
-                    signal_group = %signal_group,
-                    subscriber_count = sent_count,
-                    "Routing DataStreamUpdate to SSE subscribers"
-                );
-                self.messages_routed.fetch_add(sent_count as u64, Ordering::Relaxed);
+                self.messages_routed
+                    .fetch_add(sent_count as u64, Ordering::Relaxed);
             }
         }
     }
@@ -293,10 +285,7 @@ impl SseWorker {
 
             let heartbeat_count = registry.send_heartbeat_to_all();
             if heartbeat_count > 0 {
-                tracing::trace!(
-                    connection_count = heartbeat_count,
-                    "Sending SSE heartbeats"
-                );
+                tracing::trace!(connection_count = heartbeat_count, "Sending SSE heartbeats");
             }
         }
     }
@@ -326,8 +315,9 @@ impl Worker<Message, Variables> for SseWorker {
         tracing::info!("SseWorker started, listening for DataStreamUpdate messages");
 
         let registry = &context.variables().sse_registry;
-        let mut heartbeat_interval = roboplc::time::interval(Duration::from_secs(1));
-
+        // NOTE: Do NOT use interval.tick() here - it blocks for the full interval duration,
+        // causing message backlog. The send_heartbeat_if_needed() already uses non-blocking
+        // elapsed() time check. We just call it on every message iteration for efficiency.
         for msg in client {
             if !context.is_online() {
                 tracing::info!("SseWorker shutting down");
@@ -335,8 +325,6 @@ impl Worker<Message, Variables> for SseWorker {
             }
 
             self.handle_data_stream_update(&msg, registry);
-
-            heartbeat_interval.tick();
             self.send_heartbeat_if_needed(registry);
         }
 
@@ -408,22 +396,13 @@ mod tests {
         assert_eq!(registry.count(), 0);
 
         let (tx1, _rx1) = channel(10);
-        let conn1 = SseConnection::new(
-            "plc-1".to_string(),
-            vec!["temp".to_string()],
-            1000,
-            tx1,
-        );
+        let conn1 = SseConnection::new("plc-1".to_string(), vec!["temp".to_string()], 1000, tx1);
         let id1 = registry.register(conn1).unwrap();
         assert_eq!(registry.count(), 1);
 
         let (tx2, _rx2) = channel(10);
-        let conn2 = SseConnection::new(
-            "plc-2".to_string(),
-            vec!["pressure".to_string()],
-            2000,
-            tx2,
-        );
+        let conn2 =
+            SseConnection::new("plc-2".to_string(), vec!["pressure".to_string()], 2000, tx2);
         let id2 = registry.register(conn2).unwrap();
         assert_eq!(registry.count(), 2);
 
@@ -449,21 +428,11 @@ mod tests {
         registry.register(conn1).unwrap();
 
         let (tx2, mut rx2) = channel(10);
-        let conn2 = SseConnection::new(
-            "plc-1".to_string(),
-            vec!["temp".to_string()],
-            2000,
-            tx2,
-        );
+        let conn2 = SseConnection::new("plc-1".to_string(), vec!["temp".to_string()], 2000, tx2);
         registry.register(conn2).unwrap();
 
         let (tx3, _rx3) = channel(10);
-        let conn3 = SseConnection::new(
-            "plc-2".to_string(),
-            vec!["temp".to_string()],
-            3000,
-            tx3,
-        );
+        let conn3 = SseConnection::new("plc-2".to_string(), vec!["temp".to_string()], 3000, tx3);
         registry.register(conn3).unwrap();
 
         let sent_count = registry.send_to_subscribers(
@@ -482,21 +451,12 @@ mod tests {
         let registry = SseConnectionRegistry::new();
 
         let (tx1, mut rx1) = channel(10);
-        let conn1 = SseConnection::new(
-            "plc-1".to_string(),
-            vec!["temp".to_string()],
-            1000,
-            tx1,
-        );
+        let conn1 = SseConnection::new("plc-1".to_string(), vec!["temp".to_string()], 1000, tx1);
         registry.register(conn1).unwrap();
 
         let (tx2, mut rx2) = channel(10);
-        let conn2 = SseConnection::new(
-            "plc-2".to_string(),
-            vec!["pressure".to_string()],
-            2000,
-            tx2,
-        );
+        let conn2 =
+            SseConnection::new("plc-2".to_string(), vec!["pressure".to_string()], 2000, tx2);
         registry.register(conn2).unwrap();
 
         let sent_count = registry.send_heartbeat_to_all();
@@ -663,7 +623,8 @@ mod tests {
 
         assert_eq!(registry.count(), 99);
 
-        let sent_count = registry.send_to_subscribers("device-0", "group-0", SseEventData::Heartbeat);
+        let sent_count =
+            registry.send_to_subscribers("device-0", "group-0", SseEventData::Heartbeat);
         assert!(sent_count >= 9);
 
         let all_ids = registry.all_connection_ids();
@@ -691,12 +652,7 @@ mod tests {
         let registry = SseConnectionRegistry::new();
 
         let (tx, mut rx) = channel(10);
-        let conn = SseConnection::new(
-            "plc-1".to_string(),
-            vec!["temp".to_string()],
-            1000,
-            tx,
-        );
+        let conn = SseConnection::new("plc-1".to_string(), vec!["temp".to_string()], 1000, tx);
         registry.register(conn).unwrap();
 
         *worker.last_heartbeat_check.write() = Instant::now() - Duration::from_secs(20);
@@ -712,12 +668,7 @@ mod tests {
         let registry = SseConnectionRegistry::new();
 
         let (tx, mut rx) = channel(10);
-        let conn = SseConnection::new(
-            "plc-1".to_string(),
-            vec!["temp".to_string()],
-            1000,
-            tx,
-        );
+        let conn = SseConnection::new("plc-1".to_string(), vec!["temp".to_string()], 1000, tx);
         registry.register(conn).unwrap();
 
         worker.send_heartbeat_if_needed(&registry);
